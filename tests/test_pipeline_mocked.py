@@ -147,6 +147,53 @@ def test_no_cache_writes_nothing_to_cache_dir(tmp_path, monkeypatch, hermetic_ca
     assert not (tmp_path / "vlmcache").exists()
 
 
+def test_split_files_get_correct_sections(tmp_path):
+    # Regression: prepare_formatted_sections returns (main, backmatter, appendix);
+    # the pipeline must unpack in that order so .appendix.md / .backmatter.md aren't swapped.
+    out = tmp_path / "out"
+    cfg = RunConfig(command="run", input="x")
+    cfg.output.dir = str(out)
+    full_md = (
+        "# My Paper\n\nMain body here.\n\n"
+        "## Acknowledgments\n\nWe thank the reviewers.\n\n"
+        "## Appendix\n\nExtra derivations.\n"
+    )
+    pipeline._write_documents(cfg, "p", full_md, out)
+    appendix = (out / "p.appendix.md").read_text(encoding="utf-8")
+    backmatter = (out / "p.backmatter.md").read_text(encoding="utf-8")
+    assert appendix.startswith("# My Paper - Appendix")
+    assert "Extra derivations" in appendix and "thank the reviewers" not in appendix
+    assert backmatter.startswith("# My Paper - Backmatter")
+    assert "thank the reviewers" in backmatter and "Extra derivations" not in backmatter
+
+
+def test_failed_ocr_page_is_not_cached(tmp_path, monkeypatch, hermetic_cache):
+    from inscriber.llama.client import ChatError
+
+    @contextmanager
+    def fake_serve(self, spec):
+        yield "http://fake:1"
+
+    monkeypatch.setattr(LlamaServerManager, "serve", fake_serve)
+    monkeypatch.setattr(pipeline, "find_binary", lambda *a, **k: Path("llama-server"))
+
+    def boom(self, **kwargs):
+        raise ChatError("transient server error")
+
+    monkeypatch.setattr(ChatClient, "chat_image", boom)
+
+    out = tmp_path / "out"
+    cfg = _base_cfg(tmp_path, _dummy_models(tmp_path), out)
+    cfg.figure.detect = "none"  # OCR-only; the OCR call fails for every page
+    pipeline.run(cfg)  # resilient: empty page, run still completes
+
+    # The failed page must NOT have been written to the OCR cache (only the hash
+    # sidecar may exist), so a later retry re-attempts instead of serving empty.
+    ocr_cache = tmp_path / "ocrcache"
+    page_entries = [p for p in ocr_cache.glob("*.json") if p.name != "hashes.json"]
+    assert page_entries == []
+
+
 def test_run_no_figures_offline_smoke(tmp_path, monkeypatch, hermetic_cache):
     # The README/CI smoke: --no-figures --offline never launches a VLM and
     # produces a clean text-only document.

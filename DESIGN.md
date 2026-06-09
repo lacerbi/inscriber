@@ -1221,14 +1221,16 @@ backend = "deepseek-ocr"               # v1: deepseek-ocr only (others §22.1)
 model = "/models/deepseek-ocr-f16.gguf"
 mmproj = "/models/mmproj-deepseek-ocr-f16.gguf"
 resolution = "large"                   # tiny | small | base | large | gundam
-n_gpu_layers = 0                       # -ngl for the OCR server (per-server)
+n_gpu_layers = "auto"                  # -ngl for the OCR server (per-server):
+                                       #   "auto" (default; llama.cpp fits VRAM) |
+                                       #   "all" | integer (0 = CPU)
 endpoint = ""                          # if set, use this URL; don't spawn server
 
 [vlm]
 backend = "gemma"
 model = "/models/gemma-4-e4b-f16.gguf" # placeholder name; user-supplied (§2.3)
 mmproj = "/models/mmproj-gemma-4-e4b.gguf"
-n_gpu_layers = 0                       # -ngl for the VLM server (per-server)
+n_gpu_layers = "auto"                  # -ngl for the VLM server (per-server); see [ocr]
 endpoint = ""
 
 [figure]
@@ -1295,7 +1297,7 @@ inscriber describe BUNDLE [vlm-options]# OCR bundle → VLM + assemble + write
       --ocr-model PATH
       --ocr-mmproj PATH
       --ocr-resolution MODE     tiny|small|base|large|gundam
-      --ocr-ngl N               GPU layers for the OCR server
+      --ocr-ngl N               GPU layers for the OCR server (auto|all|int; default auto)
       --ocr-endpoint URL        use running server; don't spawn
       --figure-detect MODE      auto|grounding|none|pdf-embedded(exp.)
       --no-figures              alias for --figure-detect none
@@ -1305,7 +1307,7 @@ inscriber describe BUNDLE [vlm-options]# OCR bundle → VLM + assemble + write
       --vlm-backend NAME
       --vlm-model PATH
       --vlm-mmproj PATH
-      --vlm-ngl N               GPU layers for the VLM server
+      --vlm-ngl N               GPU layers for the VLM server (auto|all|int; default auto)
       --vlm-endpoint URL
       --figure-mode {describe-only,describe-and-keep,placeholder}
       --context-chars N         whole-page context truncation cap

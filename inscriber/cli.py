@@ -27,6 +27,22 @@ from inscriber.logging import get_logger, setup_logging
 SUBCOMMANDS = ("run", "ocr", "describe")
 
 
+def _ngl(value: str):
+    """argparse type for ``-ngl``: ``auto`` | ``all`` | a non-negative integer."""
+    v = value.strip().lower()
+    if v in ("auto", "all"):
+        return v
+    try:
+        n = int(value)
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(
+            f"must be an integer, 'auto', or 'all' (got {value!r})"
+        ) from e
+    if n < 0:
+        raise argparse.ArgumentTypeError(f"must be >= 0 (got {n})")
+    return n
+
+
 # --------------------------------------------------------------------------- #
 # Argument-group helpers (added per subcommand)
 # --------------------------------------------------------------------------- #
@@ -65,8 +81,8 @@ def _add_ocr_stage(p: argparse.ArgumentParser) -> None:
     p.add_argument("--ocr-mmproj", dest="ocr_mmproj", default=None, metavar="PATH")
     p.add_argument("--ocr-resolution", dest="ocr_resolution", default=None,
                    choices=("tiny", "small", "base", "large", "gundam"), metavar="MODE")
-    p.add_argument("--ocr-ngl", dest="ocr_ngl", type=int, default=None, metavar="N",
-                   help="GPU layers for the OCR server")
+    p.add_argument("--ocr-ngl", dest="ocr_ngl", type=_ngl, default=None, metavar="N",
+                   help="OCR GPU layers: auto (default) | all | integer (0 = CPU)")
     p.add_argument("--ocr-endpoint", dest="ocr_endpoint", default=None, metavar="URL",
                    help="use running server; don't spawn")
     p.add_argument("--figure-detect", dest="figure_detect", default=None,
@@ -81,8 +97,8 @@ def _add_vlm_stage(p: argparse.ArgumentParser) -> None:
     p.add_argument("--vlm-backend", dest="vlm_backend", default=None, metavar="NAME")
     p.add_argument("--vlm-model", dest="vlm_model", default=None, metavar="PATH")
     p.add_argument("--vlm-mmproj", dest="vlm_mmproj", default=None, metavar="PATH")
-    p.add_argument("--vlm-ngl", dest="vlm_ngl", type=int, default=None, metavar="N",
-                   help="GPU layers for the VLM server")
+    p.add_argument("--vlm-ngl", dest="vlm_ngl", type=_ngl, default=None, metavar="N",
+                   help="VLM GPU layers: auto (default) | all | integer (0 = CPU)")
     p.add_argument("--vlm-endpoint", dest="vlm_endpoint", default=None, metavar="URL")
     p.add_argument("--figure-mode", dest="figure_mode", default=None,
                    choices=("describe-only", "describe-and-keep", "placeholder"))

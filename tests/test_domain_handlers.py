@@ -73,6 +73,13 @@ def test_already_pdf_url_unchanged():
     assert h is not None
 
 
+def test_query_string_keeps_pdf_on_path():
+    # ensure-.pdf must apply to the PATH, not after the query string.
+    h = find_handler("https://arxiv.org/abs/2301.12345?context=cs")
+    pdf = h.normalize_pdf_url("https://arxiv.org/abs/2301.12345?context=cs")
+    assert pdf == "https://arxiv.org/pdf/2301.12345.pdf?context=cs"
+
+
 def test_unmatched_url_not_handled():
     assert find_handler("https://example.com/some/paper") is None
 

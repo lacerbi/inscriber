@@ -149,7 +149,9 @@ class OcrConfig:
     model: str = ""
     mmproj: str = ""
     resolution: str = "large"  # tiny | small | base | large | gundam
-    n_gpu_layers: int = 0
+    # -ngl for the OCR server: "auto" (let llama.cpp fit as many layers as VRAM
+    # allows — its own default), "all", or an explicit integer. 0 forces CPU.
+    n_gpu_layers: int | str = "auto"
     endpoint: str = ""  # if set, talk to this URL; don't spawn a server
 
 
@@ -158,7 +160,8 @@ class VlmConfig:
     backend: str = "gemma"
     model: str = ""
     mmproj: str = ""
-    n_gpu_layers: int = 0
+    # -ngl for the VLM server: "auto" (default) | "all" | integer (0 = CPU).
+    n_gpu_layers: int | str = "auto"
     endpoint: str = ""
 
 

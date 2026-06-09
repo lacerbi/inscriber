@@ -53,7 +53,7 @@ class ServerSpec:
     host: str = "127.0.0.1"
     port: int = 0  # 0 = auto-select a free ephemeral port
     ctx_size: int = 8192
-    n_gpu_layers: int = 0
+    n_gpu_layers: int | str = "auto"  # "auto" | "all" | int (0 = CPU); see DESIGN §13.1
     # Backend-supplied extra flags, e.g. DRY / repeat-penalty (DESIGN §2.2).
     extra_flags: list[str] = field(default_factory=list)
     # Per-path chat template (DESIGN §2.2): None on the server path for DeepSeek-OCR
@@ -100,9 +100,13 @@ def build_launch_args(exe: Path, spec: ServerSpec, port: int) -> list[str]:
         str(port),
         "-c",
         str(spec.ctx_size),
-        "-ngl",
-        str(spec.n_gpu_layers),
     ]
+    # n_gpu_layers == "auto" (the default) → omit -ngl entirely and let llama.cpp
+    # use its own default (which is GPU auto-fit on modern builds, e.g. 9028). This
+    # never passes a symbolic token, so it can't break arg-parsing on any build.
+    # "all" or an explicit integer are passed through verbatim.
+    if str(spec.n_gpu_layers).strip().lower() != "auto":
+        args += ["-ngl", str(spec.n_gpu_layers)]
     if spec.mmproj:
         args += ["--mmproj", spec.mmproj]
     if spec.chat_template:

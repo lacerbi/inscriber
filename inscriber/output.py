@@ -42,9 +42,13 @@ def write_text_file(path: Path, content: str, *, clobber: bool) -> Path:
 
 
 def copy_figures(
-    figures: list[Figure], *, src_base: Path, out_dir: Path
+    figures: list[Figure], *, src_base: Path, out_dir: Path, clobber: bool = True
 ) -> list[Path]:
-    """Copy referenced crop PNGs into ``out_dir/figures/`` (for describe-and-keep)."""
+    """Copy referenced crop PNGs into ``out_dir/figures/`` (for describe-and-keep).
+
+    Honors the ``clobber`` policy: a pre-existing destination figure with
+    ``--no-clobber`` is a hard error (DESIGN §14).
+    """
     written: list[Path] = []
     dest_dir = out_dir / "figures"
     for fig in figures:
@@ -54,10 +58,14 @@ def copy_figures(
         if not src.is_file():
             logger.warning("crop not found, skipping copy: %s", src)
             continue
-        dest_dir.mkdir(parents=True, exist_ok=True)
         dest = out_dir / fig.crop_path  # crop_path is "figures/<id>.png"
-        if src.resolve() != dest.resolve():
-            shutil.copyfile(src, dest)
+        if src.resolve() == dest.resolve():
+            written.append(dest)  # already in place (out_dir == bundle dir)
+            continue
+        if dest.exists() and not clobber:
+            raise OutputError(f"output figure exists and --no-clobber set: {dest}")
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(src, dest)
         written.append(dest)
     return written
 

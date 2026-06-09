@@ -135,7 +135,10 @@ def _build_ocr_backend(cfg: RunConfig):
 def _ocr_identities(cfg: RunConfig, cache: OcrCache) -> tuple[str, str]:
     """Stable model/mmproj identities for the OCR cache key (DESIGN §8.6)."""
     if cfg.ocr.endpoint:
-        return f"endpoint:{cfg.ocr.model}", f"endpoint:{cfg.ocr.mmproj}"
+        # Key on the endpoint URL too — the model path may be empty/unchanged while
+        # the endpoint serves a different model, which would otherwise collide.
+        ep = cfg.ocr.endpoint
+        return f"endpoint:{ep}:{cfg.ocr.model}", f"endpoint:{ep}:{cfg.ocr.mmproj}"
     for label, path in (("ocr.model", cfg.ocr.model), ("ocr.mmproj", cfg.ocr.mmproj)):
         if not path or not Path(path).expanduser().is_file():
             raise ConfigError(f"{label} file not found: {path}")
@@ -220,12 +223,16 @@ def run_ocr_pass(
                 logger.info("OCR page %d/%d (doc page %d)…", i, len(todo), pg.page_number)
                 try:
                     res = backend.ocr_page(inf, pg, mode)
+                    # Only cache SUCCESSFUL pages — a transient failure must not
+                    # poison the cache with an empty page (recoverable only via
+                    # --refresh otherwise).
+                    cache.put(keys[pg.page_number], res, raw_output=getattr(inf, "last_raw", ""))
                 except Exception as e:  # noqa: BLE001 - resilience (DESIGN §16)
                     logger.warning(
-                        "OCR failed on page %d: %s; emitting empty page", pg.page_number, e
+                        "OCR failed on page %d: %s; emitting empty page (not cached)",
+                        pg.page_number, e,
                     )
                     res = OcrPageResult(page_number=pg.page_number, markdown="", regions=[])
-                cache.put(keys[pg.page_number], res, raw_output=getattr(inf, "last_raw", ""))
                 results_by_page[pg.page_number] = res
     else:
         logger.info(
@@ -271,7 +278,8 @@ def _crop_pages(
 
 def _vlm_identities(cfg: RunConfig, vlm_cache: VlmCache) -> tuple[str, str]:
     if cfg.vlm.endpoint:
-        return f"endpoint:{cfg.vlm.model}", f"endpoint:{cfg.vlm.mmproj}"
+        ep = cfg.vlm.endpoint
+        return f"endpoint:{ep}:{cfg.vlm.model}", f"endpoint:{ep}:{cfg.vlm.mmproj}"
     for label, path in (("vlm.model", cfg.vlm.model), ("vlm.mmproj", cfg.vlm.mmproj)):
         if not path or not Path(path).expanduser().is_file():
             raise ConfigError(f"{label} file not found: {path}")
@@ -432,7 +440,7 @@ def _write_documents(
     written: list[Path] = [write_full_document(out_dir, base, full_out, clobber=cfg.output.clobber)]
     if cfg.output.split:
         sections = split_markdown_content(full_md)  # split the clean doc, not the prepended one
-        main, appendix, backmatter = prepare_formatted_sections(sections)
+        main, backmatter, appendix = prepare_formatted_sections(sections)
         if bibtex_block:
             main = bibtex_block + main
         written += write_split_documents(
@@ -523,7 +531,8 @@ def describe(cfg: RunConfig) -> list[str]:
         written += bib_written
         if cfg.figure.mode == "describe-and-keep" and cfg.figure.detect != "none":
             all_figs = [f for pg in pages for f in pg.figures]
-            written += [str(p) for p in copy_figures(all_figs, src_base=bundle.dir, out_dir=out_dir)]
+            written += [str(p) for p in copy_figures(
+                all_figs, src_base=bundle.dir, out_dir=out_dir, clobber=cfg.output.clobber)]
     return written
 
 
@@ -544,7 +553,8 @@ def _run_body(cfg: RunConfig, resolved, base, out_dir, work, *, vlm_endpoint=Non
     written += bib_written
     if cfg.figure.mode == "describe-and-keep" and cfg.figure.detect != "none":
         all_figs = [f for pg in working for f in pg.figures]
-        written += [str(p) for p in copy_figures(all_figs, src_base=work, out_dir=out_dir)]
+        written += [str(p) for p in copy_figures(
+            all_figs, src_base=work, out_dir=out_dir, clobber=cfg.output.clobber)]
     return written
 
 

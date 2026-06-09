@@ -186,30 +186,55 @@ def validate_structural(cfg: RunConfig) -> None:
             f"vlm.backend {cfg.vlm.backend!r} unknown; v1 supports {known_vlm_backends()}"
         )
 
-    # Numeric ranges.
-    if cfg.llama.port < 0 or cfg.llama.port > 65535:
+    # Numeric ranges — type-guarded first so a malformed TOML value (e.g.
+    # ``port = "x"``) yields a clean ConfigError, not a raw TypeError on the
+    # comparison (bool is excluded since it is an int subclass).
+    def _is_int(v) -> bool:
+        return isinstance(v, int) and not isinstance(v, bool)
+
+    def _is_num(v) -> bool:
+        return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+    if not _is_int(cfg.llama.port):
+        errors.append(f"llama.port must be an integer (got {cfg.llama.port!r})")
+    elif cfg.llama.port < 0 or cfg.llama.port > 65535:
         errors.append(f"llama.port {cfg.llama.port} out of range [0, 65535]")
-    # Concurrent mode runs two servers at once; a single fixed port can't host both.
-    if cfg.inference.mode == "concurrent" and cfg.llama.port != 0:
+        # Concurrent mode runs two servers at once; a single fixed port can't host both.
+    if cfg.inference.mode == "concurrent" and _is_int(cfg.llama.port) and cfg.llama.port != 0:
         errors.append(
             "concurrent mode requires an auto port (llama.port=0 / --port 0); a fixed "
             "port cannot host both the OCR and VLM servers simultaneously"
         )
-    if cfg.llama.ctx_size <= 0:
+    if not _is_int(cfg.llama.ctx_size):
+        errors.append(f"llama.ctx_size must be an integer (got {cfg.llama.ctx_size!r})")
+    elif cfg.llama.ctx_size <= 0:
         errors.append(f"llama.ctx_size must be > 0 (got {cfg.llama.ctx_size})")
-    if cfg.llama.server_start_timeout <= 0:
+    if not _is_int(cfg.llama.server_start_timeout):
+        errors.append(
+            f"llama.server_start_timeout must be an integer (got {cfg.llama.server_start_timeout!r})"
+        )
+    elif cfg.llama.server_start_timeout <= 0:
         errors.append(
             f"llama.server_start_timeout must be > 0 (got {cfg.llama.server_start_timeout})"
         )
-    if cfg.ocr.n_gpu_layers < 0:
-        errors.append(f"ocr.n_gpu_layers must be >= 0 (got {cfg.ocr.n_gpu_layers})")
-    if cfg.vlm.n_gpu_layers < 0:
-        errors.append(f"vlm.n_gpu_layers must be >= 0 (got {cfg.vlm.n_gpu_layers})")
-    if not (0.0 <= cfg.figure.crop_padding <= 1.0):
+    for label, val in (("ocr.n_gpu_layers", cfg.ocr.n_gpu_layers),
+                       ("vlm.n_gpu_layers", cfg.vlm.n_gpu_layers)):
+        if isinstance(val, str):
+            if val not in ("auto", "all"):
+                errors.append(f"{label} must be an integer, 'auto', or 'all' (got {val!r})")
+        elif not _is_int(val):
+            errors.append(f"{label} must be an integer, 'auto', or 'all' (got {val!r})")
+        elif val < 0:
+            errors.append(f"{label} must be >= 0 (got {val})")
+    if not _is_num(cfg.figure.crop_padding):
+        errors.append(f"figure.crop_padding must be a number (got {cfg.figure.crop_padding!r})")
+    elif not (0.0 <= cfg.figure.crop_padding <= 1.0):
         errors.append(
             f"figure.crop_padding must be in [0, 1] (got {cfg.figure.crop_padding})"
         )
-    if cfg.figure.context_chars < 0:
+    if not _is_int(cfg.figure.context_chars):
+        errors.append(f"figure.context_chars must be an integer (got {cfg.figure.context_chars!r})")
+    elif cfg.figure.context_chars < 0:
         errors.append(
             f"figure.context_chars must be >= 0 (got {cfg.figure.context_chars})"
         )

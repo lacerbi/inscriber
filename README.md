@@ -45,7 +45,10 @@ A multimodal model in llama.cpp is **two GGUF files**: the text/decoder model
 | VLM  | `gemma-4-E4B-it-*.gguf` | `mmproj-*.gguf` | unsloth `gemma-4-E4B-it-GGUF` |
 
 Point `inscriber` at the llama.cpp `bin` dir and the four GGUF paths (via config or
-flags). GPU offload is controlled per-server with `--ocr-ngl` / `--vlm-ngl`.
+flags). **GPU offload is automatic by default** — with `n_gpu_layers = "auto"`,
+inscriber omits `-ngl` so llama.cpp uses its own default (modern builds auto-fit as
+many layers into VRAM as they can). Override per-server with `--ocr-ngl` / `--vlm-ngl`
+(`all`, `0` for CPU, or an explicit layer count for partial offload).
 
 ## Quickstart
 

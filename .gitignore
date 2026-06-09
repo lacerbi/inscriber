@@ -20,3 +20,4 @@ venv/
 # inscriber runtime/test artifacts
 *.inscriber-ocr/
 /out/
+tmp-pytest*/

@@ -55,7 +55,29 @@ whitespace order matched to the TS; (5) mtmd-cli/Gemma raise `InferenceError` (a
 (8) `describe-and-keep` + `detect=none` no longer copies orphan crops. **+12 tests added** for the flagged
 gaps (concurrent mode, `--no-clobber`, describe-and-keep copy, page-numbers e2e, `--no-cache` no-write, output writer).
 
-- **148 tests pass; ruff clean.** Wheel builds + installs; `inscriber --version` works.
+- **152 tests pass; ruff clean.** Wheel builds + installs; `inscriber --version` works.
+
+**Post-v1 refinement (2026-06-09):** changed the default `ocr/vlm.n_gpu_layers` from `0`
+(forced CPU) to **`"auto"`** — llama.cpp build 9028 documents `-ngl` accepting
+`auto`/`all` with its own default being `auto`, so the old `0` was strictly worse (CPU
+unless the user passed `--*-ngl`). `--ocr-ngl`/`--vlm-ngl` now accept `auto`|`all`|integer.
+**Portability:** for `"auto"` the launcher **omits `-ngl` entirely** (rather than passing
+the literal `-ngl auto`), so llama.cpp uses its own default — GPU auto-fit on modern
+builds — and no symbolic token can break arg-parsing on any build. Verified on real
+hardware (`inscriber run`/`ocr` with no `--ngl` flags → launch omits `-ngl`, server
+healthy, GPU offload, figure described). DESIGN §13.1/§13.2 + README updated to match.
+
+**Second external review (2026-06-09) — 6 real findings fixed (+5 regression tests):**
+(P1) **split-output swap** — pipeline unpacked `prepare_formatted_sections()` as
+`(main, appendix, backmatter)` but it returns `(main, backmatter, appendix)`, so
+`.appendix.md`/`.backmatter.md` were swapped (shipped in `1cdd0a6`; only undetected
+because the sample has neither section); (P1) **failed OCR pages were cached** as empty
+→ now only successful pages are cached; (P2) endpoint cache identity now includes the
+endpoint URL (no cross-endpoint collision); (P2) malformed-type TOML values now raise a
+clean `ConfigError` instead of a `TypeError`; (P3) `copy_figures` honors `--no-clobber`;
+(P3) URL `ensure-.pdf` applies to the path, not after a `?query`. (A separate `-ngl auto`
+"finding" from the same reviewer was incorrect for build 9028 — verified — and was already
+neutralized by the omit-on-auto change above.)
 - **Verified end-to-end on real hardware** (build 9028, RTX 4060 8GB): `inscriber ocr` → bundle; `inscriber describe` (Gemma) → accurate figure descriptions; cache hits skip the server.
 - **3 design divergences caught empirically in M1a and locked in** (see `docs/M1A-FINDINGS.md`): server HTTP path (not mtmd-cli), image-before-text ordering, **padded-square** coord frame + `LABEL[[bbox]]` grounding format (not `<|ref|>`/`<|det|>`).
 - **1 splitter correctness fix** beyond paper2llm: bare "A " appendix heading requires an ack anchor (DESIGN §11 intent) — prevents title false-positives.

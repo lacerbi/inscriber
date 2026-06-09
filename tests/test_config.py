@@ -57,7 +57,8 @@ def test_defaults_match_design():
     assert rc.inference.mode == "sequential"
     assert rc.ocr.backend == "deepseek-ocr"
     assert rc.ocr.resolution == "large"
-    assert rc.ocr.n_gpu_layers == 0
+    assert rc.ocr.n_gpu_layers == "auto"  # GPU offload by default (DESIGN §13.1)
+    assert rc.vlm.n_gpu_layers == "auto"
     assert rc.vlm.backend == "gemma"
     assert rc.figure.detect == "auto"
     assert rc.figure.mode == "describe-only"
@@ -205,6 +206,19 @@ def test_every_field_overridable():
     assert rc.workdir.keep_intermediates is True
 
 
+def test_ngl_accepts_auto_all_and_int():
+    assert cfg_from(["run", "p.pdf", "--ocr-ngl", "auto"]).ocr.n_gpu_layers == "auto"
+    assert cfg_from(["run", "p.pdf", "--ocr-ngl", "all"]).ocr.n_gpu_layers == "all"
+    assert cfg_from(["run", "p.pdf", "--vlm-ngl", "33"]).vlm.n_gpu_layers == 33
+
+
+def test_ngl_rejects_bad_value():
+    from inscriber.cli import build_parser
+
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(["run", "p.pdf", "--ocr-ngl", "lots"])
+
+
 def test_no_figures_aliases_detect_none():
     rc = cfg_from(["run", "paper.pdf", "--no-figures"])
     assert rc.figure.detect == "none"
@@ -244,6 +258,18 @@ def test_unknown_backend_rejected():
     rc.ocr.backend = "made-up-ocr"
     with pytest.raises(ConfigError):
         validate_structural(rc)
+
+
+def test_bad_numeric_type_is_clean_config_error():
+    # A malformed TOML value (wrong type) must yield a ConfigError, not a TypeError.
+    rc = RunConfig(command="run", input="p.pdf")
+    rc.llama.port = "x"  # e.g. port = "x" in config.toml
+    with pytest.raises(ConfigError, match="port must be an integer"):
+        validate_structural(rc)
+    rc2 = RunConfig(command="run", input="p.pdf")
+    rc2.figure.crop_padding = "big"
+    with pytest.raises(ConfigError, match="crop_padding must be a number"):
+        validate_structural(rc2)
 
 
 def test_concurrent_requires_auto_port():

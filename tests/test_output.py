@@ -54,6 +54,21 @@ def test_copy_figures(tmp_path):
     assert out / "figures" / "fig_p1_1.png" in written
 
 
+def test_copy_figures_no_clobber_errors(tmp_path):
+    src = tmp_path / "bundle"
+    (src / "figures").mkdir(parents=True)
+    (src / "figures" / "fig_p1_1.png").write_bytes(b"NEW")
+    out = tmp_path / "out"
+    (out / "figures").mkdir(parents=True)
+    (out / "figures" / "fig_p1_1.png").write_bytes(b"OLD")  # pre-existing
+    figs = [Figure(id="fig_p1_1", page=1, bbox_norm=(0, 0, 1, 1),
+                   crop_path="figures/fig_p1_1.png", caption=None)]
+    with pytest.raises(OutputError, match="--no-clobber"):
+        copy_figures(figs, src_base=src, out_dir=out, clobber=False)
+    # the existing file is untouched:
+    assert (out / "figures" / "fig_p1_1.png").read_bytes() == b"OLD"
+
+
 def test_copy_figures_self_copy_guard(tmp_path):
     # When out_dir == bundle dir, the source IS the destination — must not error.
     base = tmp_path / "b"

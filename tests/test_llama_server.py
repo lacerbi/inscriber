@@ -69,6 +69,20 @@ def test_build_launch_args_omits_mmproj_when_none():
     assert "--mmproj" not in args
 
 
+def test_build_launch_args_ngl_auto_omits_flag():
+    # "auto" (the default) omits -ngl entirely → llama.cpp uses its own default
+    # (GPU auto-fit on modern builds), and no symbolic token can break arg-parsing.
+    args = build_launch_args(Path("/bin/llama-server"), ServerSpec(model="/m.gguf"), 1)
+    assert "-ngl" not in args
+
+
+def test_build_launch_args_ngl_all_and_int():
+    a = build_launch_args(Path("/x"), ServerSpec(model="/m", n_gpu_layers="all"), 1)
+    assert _subseq(a, ["-ngl", "all"])
+    b = build_launch_args(Path("/x"), ServerSpec(model="/m", n_gpu_layers=20), 1)
+    assert _subseq(b, ["-ngl", "20"])
+
+
 # --------------------------------------------------------------------------- #
 # find_binary .exe suffix (DESIGN §5.2)
 # --------------------------------------------------------------------------- #

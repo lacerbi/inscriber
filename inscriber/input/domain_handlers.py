@@ -63,9 +63,11 @@ class GenericDomainHandler:
         for pattern, repl in self.config.pdf_transform_rules:
             m = pattern.search(path)
             if m:
-                new_path = path[: m.start()] + repl(m) + path[m.end():]
-                return _ensure_pdf_extension(urlunparse(parsed._replace(path=new_path)))
-        return _ensure_pdf_extension(url)
+                # Apply ensure-.pdf to the PATH (not the full URL) so a query string
+                # like "?id=x" doesn't become "?id=x.pdf".
+                new_path = _ensure_pdf_extension(path[: m.start()] + repl(m) + path[m.end():])
+                return urlunparse(parsed._replace(path=new_path))
+        return urlunparse(parsed._replace(path=_ensure_pdf_extension(path)))
 
     def file_name(self, url: str) -> str:
         parsed = urlparse(url)
