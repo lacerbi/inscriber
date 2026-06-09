@@ -80,6 +80,10 @@ def test_full_run_mocked(tmp_path, monkeypatch, hermetic_cache):
     assert "> **Image description.** A line chart trending upward." in text
     assert "⟦INSCRIBER_FIG" not in text  # placeholder consumed
     assert "## Abstract" in text  # OCR text carried through
+    assert text.rstrip().endswith(
+        "*Transcribed with OCR and VLMs; text, equations, and figure descriptions "
+        "may contain mistakes.*"
+    )
 
 
 def _base_cfg(tmp_path, models, out):
@@ -122,6 +126,16 @@ def test_page_numbers_survive_into_document(tmp_path, monkeypatch, hermetic_cach
     pipeline.run(cfg)
     text = (out / "sample_paper.md").read_text(encoding="utf-8")
     assert "#### Page 1" in text
+
+
+def test_notice_can_be_disabled(tmp_path, monkeypatch, hermetic_cache):
+    _mock_inference(monkeypatch)
+    out = tmp_path / "out"
+    cfg = _base_cfg(tmp_path, _dummy_models(tmp_path), out)
+    cfg.output.notice = False
+    pipeline.run(cfg)
+    text = (out / "sample_paper.md").read_text(encoding="utf-8")
+    assert "Transcribed with OCR" not in text
 
 
 def test_no_clobber_errors_on_rerun(tmp_path, monkeypatch, hermetic_cache):
@@ -214,3 +228,4 @@ def test_run_no_figures_offline_smoke(tmp_path, monkeypatch, hermetic_cache):
     text = (out / "sample_paper.md").read_text(encoding="utf-8")
     assert "⟦INSCRIBER_FIG" not in text
     assert "Image description" not in text  # no figures described
+    assert text.rstrip().endswith("*Transcribed with OCR; text may contain mistakes.*")

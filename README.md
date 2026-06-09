@@ -82,7 +82,7 @@ Highlights (see `DESIGN.md` §13 for the full surface):
 | `--ocr-resolution {tiny,small,base,large,gundam}` | OCR render quality (default `large`) |
 | `--figure-detect {auto,grounding,none,pdf-embedded}` | figure detection (`--no-figures` = `none`) |
 | `--figure-mode {describe-only,describe-and-keep,placeholder}` | how figures render |
-| `--no-split` / `--page-numbers` / `--page-separators` | output/assembly options |
+| `--no-split` / `--page-numbers` / `--page-separators` / `--no-notice` | output/assembly options |
 | `--bibtex` / `--bibtex-in-doc` | online Semantic Scholar BibTeX (opt-in) |
 | `--offline` | hard-disable all network use (URL input + BibTeX) |
 | `--mode {sequential,concurrent}` | one model resident (default) vs both (VRAM caveat) |

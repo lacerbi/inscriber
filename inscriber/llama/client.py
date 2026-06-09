@@ -32,6 +32,7 @@ class ChatClient:
     def __init__(self, base_url: str, *, default_timeout: float = 600.0) -> None:
         self.base_url = base_url.rstrip("/")
         self.default_timeout = default_timeout
+        self.last_completion_tokens: int | None = None
 
     def chat(
         self,
@@ -42,6 +43,7 @@ class ChatClient:
         timeout_s: float | None = None,
     ) -> str:
         """Send a chat request, return ``choices[0].message.content`` (a string)."""
+        self.last_completion_tokens = None
         body: dict = {
             "model": "local",
             "messages": messages,
@@ -68,9 +70,16 @@ class ChatClient:
             )
         try:
             data = resp.json()
-            return data["choices"][0]["message"]["content"]
+            content = data["choices"][0]["message"]["content"]
         except (KeyError, IndexError, ValueError) as e:
             raise ChatError(f"malformed chat response from {url}: {e}") from e
+        usage = data.get("usage") if isinstance(data, dict) else None
+        completion_tokens = (
+            usage.get("completion_tokens") if isinstance(usage, dict) else None
+        )
+        if isinstance(completion_tokens, int):
+            self.last_completion_tokens = completion_tokens
+        return content
 
     def chat_image(
         self,

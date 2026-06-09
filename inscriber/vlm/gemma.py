@@ -12,6 +12,8 @@ from inscriber.llama.client import ChatClient
 from inscriber.postprocess.prompt import extract_description_from_tags, format_image_prompt
 from inscriber.vlm.base import VlmBackend
 
+TRUNCATED_MARKER = "[...]"
+
 
 class GemmaVlmBackend(VlmBackend):
     name = "gemma"
@@ -21,7 +23,7 @@ class GemmaVlmBackend(VlmBackend):
         *,
         client: ChatClient | None = None,
         seed: int = 0,
-        max_tokens: int = 1536,
+        max_tokens: int = 4096,
         request_timeout: float = 600.0,
         image_first: bool = True,
     ) -> None:
@@ -52,4 +54,12 @@ class GemmaVlmBackend(VlmBackend):
             timeout_s=self.request_timeout,
             image_first=self.image_first,
         )
-        return extract_description_from_tags(raw)
+        desc = extract_description_from_tags(raw)
+        completion_tokens = getattr(self.client, "last_completion_tokens", None)
+        if (
+            isinstance(completion_tokens, int)
+            and completion_tokens >= self.max_tokens()
+            and not desc.rstrip().endswith(TRUNCATED_MARKER)
+        ):
+            return desc.rstrip() + f" {TRUNCATED_MARKER}"
+        return desc

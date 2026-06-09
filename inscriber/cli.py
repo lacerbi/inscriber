@@ -120,6 +120,8 @@ def _add_output_stage(p: argparse.ArgumentParser) -> None:
                    help="skip blank-line collapsing")
     p.add_argument("--no-clobber", dest="clobber", action="store_const", const=False,
                    default=None, help="error instead of overwriting existing outputs")
+    p.add_argument("--no-notice", dest="notice", action="store_const", const=False,
+                   default=None, help="omit the OCR/VLM caveat footer")
     p.add_argument("--bibtex", dest="bibtex", action="store_const", const=True,
                    default=None, help="fetch BibTeX (requires network)")
     p.add_argument("--bibtex-in-doc", dest="bibtex_in_doc", action="store_const",
@@ -240,6 +242,7 @@ def collect_cli_sections(args: argparse.Namespace) -> dict[str, dict]:
     setv("output", "normalize_line_breaks", g("normalize_line_breaks"))
     setv("output", "clean", g("clean"))
     setv("output", "clobber", g("clobber"))
+    setv("output", "notice", g("notice"))
     # cache
     setv("cache", "enabled", g("cache_enabled"))
     setv("cache", "refresh", g("refresh"))

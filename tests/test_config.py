@@ -70,6 +70,7 @@ def test_defaults_match_design():
     assert rc.output.normalize_line_breaks is True
     assert rc.output.clean is True
     assert rc.output.clobber is True
+    assert rc.output.notice is True
     assert rc.cache.enabled is True
     assert rc.cache.refresh is False
     assert rc.workdir.path == ""
@@ -158,6 +159,7 @@ def test_every_field_overridable():
         "--no-clean",
         "--no-normalize-breaks",
         "--no-clobber",
+        "--no-notice",
         "--bibtex",
         "--bibtex-in-doc",
         "--offline",
@@ -197,6 +199,7 @@ def test_every_field_overridable():
     assert rc.output.normalize_line_breaks is False
     assert rc.output.clean is False
     assert rc.output.clobber is False
+    assert rc.output.notice is False
     assert rc.bibtex.enabled is True
     assert rc.bibtex.append_to_document is True
     assert rc.net.offline is True

@@ -63,6 +63,7 @@ from inscriber.postprocess.inject import (
     ensure_placeholders,
     inject_descriptions,
 )
+from inscriber.postprocess.notice import append_transcription_notice
 from inscriber.postprocess.prompt import build_page_context
 from inscriber.postprocess.splitter import (
     extract_title,
@@ -330,6 +331,7 @@ def _vlm_describe(
             vlm_mmproj_identity=mmproj_id,
             full_assembled_prompt=prompt,
             sampling=proto.sampling(),
+            max_tokens=proto.max_tokens(),
         )
         keys[fig.id] = key
         cached = vlm_cache.get(key)
@@ -437,12 +439,20 @@ def _write_documents(
     full document and the main split (DESIGN §12 — full/main/allparts only).
     """
     full_out = (bibtex_block + full_md) if bibtex_block else full_md
+    if cfg.output.notice:
+        full_out = append_transcription_notice(full_out)
     written: list[Path] = [write_full_document(out_dir, base, full_out, clobber=cfg.output.clobber)]
     if cfg.output.split:
         sections = split_markdown_content(full_md)  # split the clean doc, not the prepended one
         main, backmatter, appendix = prepare_formatted_sections(sections)
         if bibtex_block:
             main = bibtex_block + main
+        if cfg.output.notice:
+            main = append_transcription_notice(main)
+            if appendix is not None:
+                appendix = append_transcription_notice(appendix)
+            if backmatter is not None:
+                backmatter = append_transcription_notice(backmatter)
         written += write_split_documents(
             out_dir, base, main=main, appendix=appendix, backmatter=backmatter,
             clobber=cfg.output.clobber,

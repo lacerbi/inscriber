@@ -1254,6 +1254,7 @@ page_separators = false                # insert "---" between pages
 normalize_line_breaks = true           # collapse excess blank lines
 clean = true                           # header/footer + de-hyphenation pass
 clobber = true                         # overwrite existing outputs
+notice = true                          # append compact OCR/VLM caveat footer
 
 [cache]
 enabled = true                         # false ⇔ --no-cache (no read, no write)
@@ -1324,6 +1325,7 @@ inscriber describe BUNDLE [vlm-options]# OCR bundle → VLM + assemble + write
       --no-clean                skip header/footer + de-hyphenation cleanup
       --no-normalize-breaks     skip blank-line collapsing
       --no-clobber              error instead of overwriting existing outputs
+      --no-notice               omit the OCR/VLM caveat footer
       --bibtex                  fetch BibTeX (requires network)
       --bibtex-in-doc           also inject the BibTeX entry into the document
       --offline                 disable ALL network use (URL input + bibtex)
@@ -1366,6 +1368,7 @@ inscriber describe BUNDLE [vlm-options]# OCR bundle → VLM + assemble + write
 | `output.normalize_line_breaks`                         | `--no-normalize-breaks` (sets false)                                              |
 | `output.clean`                                         | `--no-clean` (sets false)                                                         |
 | `output.clobber`                                       | `--no-clobber` (sets false)                                                       |
+| `output.notice`                                        | `--no-notice` (sets false)                                                        |
 | `cache.enabled` / `cache.refresh`                      | `--no-cache` / `--refresh`                                                        |
 | `workdir.path` / `workdir.keep_intermediates`          | `--workdir` / `--keep-intermediates`                                              |
 | `bibtex.enabled` / `bibtex.append_to_document`         | `--bibtex` / `--bibtex-in-doc`                                                    |

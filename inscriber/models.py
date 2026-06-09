@@ -182,6 +182,7 @@ class OutputConfig:
     normalize_line_breaks: bool = True
     clean: bool = True
     clobber: bool = True
+    notice: bool = True
 
 
 @dataclass

@@ -9,6 +9,7 @@ from inscriber.cache import (
     OcrCache,
     file_identity,
     make_ocr_key,
+    make_vlm_key,
     sha256_bytes,
 )
 from inscriber.models import OcrPageResult, Region
@@ -50,6 +51,18 @@ def test_make_ocr_key_deterministic_and_sensitive():
     assert make_ocr_key(**{**base, "mmproj_identity": "mp:2:other"}) != k1
     assert make_ocr_key(**{**base, "render_long_edge_px": 640}) != k1
     assert make_ocr_key(**{**base, "sampling": {"temperature": 0, "seed": 7}}) != k1
+
+
+def test_make_vlm_key_includes_max_tokens():
+    base = dict(
+        figure_crop_hash="crop",
+        vlm_backend_name="gemma",
+        vlm_model_identity="m:1:h",
+        vlm_mmproj_identity="mp:1:h",
+        full_assembled_prompt="prompt",
+        sampling={"temperature": 0, "seed": 0},
+    )
+    assert make_vlm_key(**base, max_tokens=1536) != make_vlm_key(**base, max_tokens=4096)
 
 
 def test_cache_put_get_roundtrip(tmp_path):

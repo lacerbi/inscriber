@@ -177,6 +177,7 @@ def make_vlm_key(
     vlm_mmproj_identity: str,
     full_assembled_prompt: str,
     sampling: dict,
+    max_tokens: int,
 ) -> str:
     """VLM cache key (DESIGN §9.6).
 
@@ -191,6 +192,7 @@ def make_vlm_key(
             "mmproj": vlm_mmproj_identity,
             "prompt": full_assembled_prompt,
             "sampling": sampling,
+            "max_tokens": max_tokens,
         },
         sort_keys=True,
     )

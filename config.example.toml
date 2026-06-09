@@ -86,6 +86,9 @@ normalize_line_breaks = true
 clean = true
 clobber = true
 
+# Append a compact OCR/VLM caveat footer to generated Markdown files.
+notice = true
+
 [cache]
 # enabled = false is equivalent to --no-cache: no cache reads or writes.
 enabled = true

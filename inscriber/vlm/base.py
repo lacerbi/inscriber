@@ -26,4 +26,4 @@ class VlmBackend(ABC):
         return {"temperature": 0, "seed": 0}
 
     def max_tokens(self) -> int:
-        return 1536
+        return 4096
