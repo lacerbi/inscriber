@@ -305,6 +305,52 @@ def test_load_toml(tmp_path):
     assert data["net"]["offline"] is True
 
 
+def test_implicit_local_config_wins_over_platform_config(tmp_path, monkeypatch):
+    from inscriber import config as config_module
+
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    platform_dir = tmp_path / "platform"
+    platform_dir.mkdir()
+    local_config = project_dir / "config.toml"
+    platform_config = platform_dir / "config.toml"
+    local_config.write_text('[ocr]\nresolution = "tiny"\n', encoding="utf-8")
+    platform_config.write_text('[ocr]\nresolution = "base"\n', encoding="utf-8")
+
+    monkeypatch.chdir(project_dir)
+    monkeypatch.setattr(
+        config_module.platformdirs,
+        "user_config_dir",
+        lambda _appname: str(platform_dir),
+    )
+
+    data, used = load_config_file(None)
+    assert used == local_config
+    assert data["ocr"]["resolution"] == "tiny"
+
+
+def test_implicit_platform_config_used_when_no_local_config(tmp_path, monkeypatch):
+    from inscriber import config as config_module
+
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    platform_dir = tmp_path / "platform"
+    platform_dir.mkdir()
+    platform_config = platform_dir / "config.toml"
+    platform_config.write_text('[ocr]\nresolution = "base"\n', encoding="utf-8")
+
+    monkeypatch.chdir(project_dir)
+    monkeypatch.setattr(
+        config_module.platformdirs,
+        "user_config_dir",
+        lambda _appname: str(platform_dir),
+    )
+
+    data, used = load_config_file(None)
+    assert used == platform_config
+    assert data["ocr"]["resolution"] == "base"
+
+
 def test_invalid_toml_errors(tmp_path):
     p = tmp_path / "config.toml"
     p.write_text("this is = = not valid toml", encoding="utf-8")

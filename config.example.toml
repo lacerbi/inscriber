@@ -1,0 +1,113 @@
+# inscriber example configuration.
+#
+# How to use this file:
+# 1. Fill in the local paths marked REQUIRED below.
+# 2. Put the completed values in a file named config.toml in the project root,
+#    or pass this file explicitly with: inscriber --config config.example.toml ...
+# 3. Leave options you do not need at their defaults.
+#
+# Path notes:
+# - Use absolute paths for llama.cpp and GGUF files.
+# - On Windows, forward slashes are accepted, for example:
+#   C:/Users/you/models/deepseek-ocr-bf16.gguf
+# - inscriber bundles no model weights; these files must already exist locally.
+
+[llama]
+# REQUIRED unless you use endpoints below: folder containing llama-server.exe
+# on Windows, or llama-server on Linux/macOS.
+bin_dir = "C:/path/to/llama.cpp/build/bin"
+
+# Usually leave these as-is. port = 0 means inscriber picks a free port.
+host = "127.0.0.1"
+port = 0
+server_start_timeout = 120
+ctx_size = 8192
+
+[inference]
+# sequential keeps one model resident at a time and is the safest default.
+# concurrent starts OCR and VLM servers together and needs enough RAM/VRAM.
+mode = "sequential"
+
+[ocr]
+backend = "deepseek-ocr"
+
+# REQUIRED unless ocr.endpoint is set: DeepSeek-OCR model + multimodal projector.
+# Use BF16/F16 weights when possible; avoid Q4_K_M for DeepSeek-OCR.
+model = "C:/path/to/models/deepseek-ocr-bf16.gguf"
+mmproj = "C:/path/to/models/mmproj-deepseek-ocr-bf16.gguf"
+
+# tiny | small | base | large | gundam
+resolution = "large"
+
+# auto lets llama.cpp choose GPU offload. Use 0 for CPU, "all" for all layers,
+# or an explicit integer layer count.
+n_gpu_layers = "auto"
+
+# Optional: if you already run a compatible llama-server yourself, set this and
+# inscriber will not launch its own OCR server or validate model/mmproj paths.
+endpoint = ""
+
+[vlm]
+backend = "gemma"
+
+# REQUIRED unless vlm.endpoint is set: Gemma text model + multimodal projector.
+model = "C:/path/to/models/gemma-4-E4B-it-Q4_K_M.gguf"
+mmproj = "C:/path/to/models/mmproj-gemma-4-E4B-it.gguf"
+
+n_gpu_layers = "auto"
+
+# Optional: use an already-running compatible llama-server for figure descriptions.
+endpoint = ""
+
+[figure]
+# auto uses DeepSeek-OCR grounding. Other values:
+# grounding | none | pdf-embedded
+detect = "auto"
+
+# describe-only writes text descriptions only.
+# describe-and-keep also writes image links to cropped figures.
+# placeholder inserts a non-displayed image placeholder.
+mode = "describe-only"
+
+# Extra margin around detected figure boxes, as a fraction of page dimensions.
+crop_padding = 0.02
+
+# Whole-page context chars sent to the VLM for each figure.
+context_chars = 2000
+
+[output]
+# Output directory for generated Markdown, bundle files, and optional figures.
+dir = "."
+
+split = true
+page_numbers = false
+page_separators = false
+normalize_line_breaks = true
+clean = true
+clobber = true
+
+[cache]
+# enabled = false is equivalent to --no-cache: no cache reads or writes.
+enabled = true
+
+# refresh = true recomputes and overwrites existing cache entries.
+refresh = false
+
+[workdir]
+# Empty means use the OS temp directory. Set a path to control intermediates.
+path = ""
+
+# true keeps page images and crop intermediates after a successful run.
+keep_intermediates = false
+
+[bibtex]
+# Uses Semantic Scholar and therefore needs network access. Keep false for a
+# fully local/offline core pipeline.
+enabled = false
+
+# When enabled, prepend the BibTeX block into the generated Markdown too.
+append_to_document = false
+
+[net]
+# true disables URL downloads and BibTeX lookup.
+offline = false

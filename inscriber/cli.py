@@ -50,7 +50,7 @@ def _ngl(value: str):
 
 def _add_common(p: argparse.ArgumentParser) -> None:
     p.add_argument("-c", "--config", dest="config", default=None, metavar="PATH",
-                   help="config file (default: platform config dir)")
+                   help="config file (default: ./config.toml, then platform config dir)")
     p.add_argument("-o", "--output-dir", dest="output_dir", default=None, metavar="DIR",
                    help="output directory (default: cwd)")
     p.add_argument("-v", "--verbose", action="count", default=0,

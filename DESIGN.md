@@ -1196,7 +1196,12 @@ fallback mock citation.` — is assembled in **`content-utils.ts`**
 
 ### 13.1 Config file (TOML)
 
-Default location resolved via **`platformdirs`**:
+Default discovery checks the current working directory first:
+
+- `./config.toml`
+
+If no local config exists, the fallback location is resolved via
+**`platformdirs`**:
 
 - Linux: `~/.config/inscriber/config.toml`
 - macOS: `~/Library/Application Support/inscriber/config.toml`
@@ -1280,7 +1285,7 @@ inscriber describe BUNDLE [vlm-options]# OCR bundle → VLM + assemble + write
   # --- common ---
   INPUT                         PDF file path or http(s) URL   (run, ocr)
   BUNDLE                        path to a *.inscriber-ocr dir   (describe)
-  -c, --config PATH             config file (default: platform config dir)
+  -c, --config PATH             config file (default: ./config.toml, then platform config dir)
   -o, --output-dir DIR          output directory (default: cwd)
       --pages RANGE             1-indexed inclusive, e.g. "1-10","3","5-","-12","all" (run, ocr)
 

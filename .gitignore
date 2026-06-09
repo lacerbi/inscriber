@@ -18,6 +18,7 @@ venv/
 .mypy_cache/
 
 # inscriber runtime/test artifacts
+config.toml
 *.inscriber-ocr/
 /out/
 tmp-pytest*/

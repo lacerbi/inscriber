@@ -72,8 +72,9 @@ split/figure/bibtex options re-runs in seconds).
 
 ## Configuration
 
-Config lives in a TOML file (platform config dir, or `--config PATH`); **every
-field is overridable from the CLI** (precedence: CLI flag > config file > default).
+Config lives in a TOML file. By default, `inscriber` checks `./config.toml` first,
+then the platform config dir; `--config PATH` overrides both. **Every field is
+overridable from the CLI** (precedence: CLI flag > config file > default).
 Highlights (see `DESIGN.md` §13 for the full surface):
 
 | flag | meaning |

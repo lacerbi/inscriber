@@ -78,19 +78,27 @@ def default_config_path() -> Path:
     return Path(platformdirs.user_config_dir("inscriber")) / "config.toml"
 
 
+def local_config_path() -> Path:
+    """Project-local config path checked before the platform config."""
+    return Path.cwd() / "config.toml"
+
+
 def load_config_file(config_path: str | None) -> tuple[dict, Path | None]:
     """Load a TOML config file.
 
     If ``config_path`` is given it must exist (explicit request → hard error if
-    missing). If omitted, the platform default is used and a missing file is fine
-    (returns ``{}``).
+    missing). If omitted, ``./config.toml`` is used when present, otherwise the
+    platform default is used. Missing implicit config files are fine (returns
+    ``{}``).
     """
     if config_path is not None:
         p = Path(config_path).expanduser()
         if not p.is_file():
             raise ConfigError(f"Config file not found: {p}")
     else:
-        p = default_config_path()
+        p = local_config_path()
+        if not p.is_file():
+            p = default_config_path()
         if not p.is_file():
             return {}, None
     try:
