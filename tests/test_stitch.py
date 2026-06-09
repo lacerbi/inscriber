@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from inscriber.models import fig_placeholder
 from inscriber.postprocess.stitch import (
     dehyphenate,
     ensure_image_description_spacing,
@@ -48,7 +49,16 @@ def test_dehyphenate_joins_line_break():
 
 def test_stitch_pages_plain():
     out = stitch_pages([(1, "page one"), (2, "page two")])
-    assert out == "page onepage two"
+    # Pages are always separated by a blank line, never welded together.
+    assert out == "page one\n\npage two"
+
+
+def test_stitch_pages_never_fuses_page_boundary():
+    # Regression: a page ending in "(MAR)" must not weld onto the next page's
+    # "2. A researcher…" (the observed "(MAR)2. A researcher" fusion bug).
+    out = stitch_pages([(1, "…random (MAR)"), (2, "2. A researcher uses…")])
+    assert "(MAR)2." not in out
+    assert out == "…random (MAR)\n\n2. A researcher uses…"
 
 
 def test_stitch_pages_with_numbers_and_separators():
@@ -71,6 +81,29 @@ def test_strip_running_headers_footers():
     for cleaned in out:
         assert "Journal of Examples" not in cleaned
     assert "Page one body." in out[0]
+
+
+def test_strip_running_headers_never_removes_figure_placeholders():
+    pages = [
+        "Title page body.",
+        f"Page two body.\n\n{fig_placeholder('fig_p2_1')}",
+        "Page three body.",
+        f"Page four body.\n\n{fig_placeholder('fig_p4_1')}",
+    ]
+    out = strip_running_headers_footers(pages)
+    assert fig_placeholder("fig_p2_1") in out[1]
+    assert fig_placeholder("fig_p4_1") in out[3]
+
+
+def test_strip_running_headers_uses_ceiling_threshold():
+    pages = [
+        "Repeated Header\n\nPage one body.",
+        "Repeated Header\n\nPage two body.",
+        "Different Header\n\nPage three body.",
+        "Another Header\n\nPage four body.",
+    ]
+    # 60% of 4 pages is 2.4, so only two occurrences must not qualify.
+    assert strip_running_headers_footers(pages) == pages
 
 
 def test_strip_skips_short_docs():
