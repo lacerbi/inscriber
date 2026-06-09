@@ -55,7 +55,8 @@ whitespace order matched to the TS; (5) mtmd-cli/Gemma raise `InferenceError` (a
 (8) `describe-and-keep` + `detect=none` no longer copies orphan crops. **+12 tests added** for the flagged
 gaps (concurrent mode, `--no-clobber`, describe-and-keep copy, page-numbers e2e, `--no-cache` no-write, output writer).
 
-- **152 tests pass; ruff clean.** Wheel builds + installs; `inscriber --version` works.
+- **157 tests pass; ruff clean.** Wheel builds + installs; `inscriber --version` works.
+  (Count grew across post-completion review rounds — see refinement/review notes below.)
 
 **Post-v1 refinement (2026-06-09):** changed the default `ocr/vlm.n_gpu_layers` from `0`
 (forced CPU) to **`"auto"`** — llama.cpp build 9028 documents `-ngl` accepting
