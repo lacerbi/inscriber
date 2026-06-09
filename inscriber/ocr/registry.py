@@ -9,9 +9,13 @@ from __future__ import annotations
 
 from inscriber.ocr.base import OcrBackend
 from inscriber.ocr.deepseek import DeepSeekOcrBackend
+from inscriber.ocr.glm import GlmOcrBackend
 
 _REGISTRY: dict[str, type[OcrBackend]] = {
     DeepSeekOcrBackend.name: DeepSeekOcrBackend,
+    # Experimental text-only backend (DESIGN §22.1) — no figure grounding; use
+    # with --figure-detect none or a separate figure pass.
+    GlmOcrBackend.name: GlmOcrBackend,
 }
 
 
