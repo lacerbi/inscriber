@@ -1,0 +1,30 @@
+sub_title[[201, 77, 588, 106]]
+## A Calibration Study for Local OCR  
+
+text[[141, 124, 400, 142]]
+Ada Researcher, Boris Scientist  
+
+sub_title[[141, 173, 213, 191]]
+## Abstract  
+
+text[[140, 201, 796, 262]]
+We present a calibration study for local optical character recognition. Our method converts academic documents into Markdown using a vision model running entirely on device. We report layout grounding accuracy and discuss coordinate- frame conventions used by the decoder.  
+
+sub_title[[142, 299, 880, 321]]
+## 1. Introduction  
+
+text[[140, 331, 807, 391]]
+Document understanding has progressed rapidly. Converting PDFs to clean text is a prerequisite for downstream language- model pipelines. We focus on the offline setting, where no cloud service is involved.  
+
+text[[140, 406, 790, 467]]
+We summarize related work and motivate the need for figure grounding. Existing tools transcribe text well but rarely localize figures, which is essential when figures must be replaced by generated descriptions.  
+
+image[[280, 501, 707, 757]]
+image_caption[[280, 765, 595, 783]]
+<center>Figure 1: Calibration curve for the proposed method. </center>  
+
+sub_title[[140, 803, 223, 823]]
+## 2. Method  
+
+text[[140, 834, 775, 874]]
+Let \(x\) denote the input page and \(y\) the predicted markdown. We model \(\mathrm{p}(y \mid x)\) with a decoder conditioned on encoder features. The loss is \(\mathrm{L} = -\log \mathrm{p}(y \mid x)\) .

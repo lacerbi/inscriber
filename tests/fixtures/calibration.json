@@ -1,0 +1,136 @@
+{
+  "page_pt": [
+    600.0,
+    800.0
+  ],
+  "box_pt": [
+    150.0,
+    200.0,
+    450.0,
+    520.0
+  ],
+  "box_color": "red (1,0,0) frame outline; interior = embedded line-chart image",
+  "note": "On real hardware, run DeepSeek-OCR on calibration.pdf at a given mode and compare the emitted <|det|>[[...]] coords to predicted_grid_reference (DESIGN default: per-axis, original image) vs predicted_grid_padded_square. Whichever it matches IS the coordinate frame (DESIGN \u00a72.2 / \u00a78.3 step 3).",
+  "modes": {
+    "tiny": {
+      "target_px": 512,
+      "zoom": 0.64,
+      "render_w_px": 384,
+      "render_h_px": 512,
+      "expected_box_px": [
+        96.0,
+        128.0,
+        288.0,
+        332.8
+      ],
+      "predicted_grid_reference": [
+        250,
+        250,
+        749,
+        649
+      ],
+      "predicted_grid_padded_square": [
+        312,
+        250,
+        687,
+        649
+      ]
+    },
+    "small": {
+      "target_px": 640,
+      "zoom": 0.8,
+      "render_w_px": 480,
+      "render_h_px": 640,
+      "expected_box_px": [
+        120.0,
+        160.0,
+        360.0,
+        416.0
+      ],
+      "predicted_grid_reference": [
+        250,
+        250,
+        749,
+        649
+      ],
+      "predicted_grid_padded_square": [
+        312,
+        250,
+        687,
+        649
+      ]
+    },
+    "base": {
+      "target_px": 1024,
+      "zoom": 1.28,
+      "render_w_px": 768,
+      "render_h_px": 1024,
+      "expected_box_px": [
+        192.0,
+        256.0,
+        576.0,
+        665.6
+      ],
+      "predicted_grid_reference": [
+        250,
+        250,
+        749,
+        649
+      ],
+      "predicted_grid_padded_square": [
+        312,
+        250,
+        687,
+        649
+      ]
+    },
+    "large": {
+      "target_px": 1280,
+      "zoom": 1.6,
+      "render_w_px": 960,
+      "render_h_px": 1280,
+      "expected_box_px": [
+        240.0,
+        320.0,
+        720.0,
+        832.0
+      ],
+      "predicted_grid_reference": [
+        250,
+        250,
+        749,
+        649
+      ],
+      "predicted_grid_padded_square": [
+        312,
+        250,
+        687,
+        649
+      ]
+    },
+    "gundam": {
+      "target_px": 1280,
+      "zoom": 1.6,
+      "render_w_px": 960,
+      "render_h_px": 1280,
+      "expected_box_px": [
+        240.0,
+        320.0,
+        720.0,
+        832.0
+      ],
+      "predicted_grid_reference": [
+        250,
+        250,
+        749,
+        649
+      ],
+      "predicted_grid_padded_square": [
+        312,
+        250,
+        687,
+        649
+      ]
+    }
+  }
+}

@@ -1,0 +1,12 @@
+% WARNING: This is a fallback mock citation.
+% BibTeX generation failed to find this paper in academic databases.
+% Please replace with the correct citation if available.
+%
+% Generated: 2026-06-09
+@article{unknownYear,
+  title={Test Paper Title},
+  author={Unknown Author},
+  journal={Unknown Journal},
+  year={2026},
+  note={This is an automatically generated fallback citation}
+}
