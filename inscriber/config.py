@@ -248,18 +248,26 @@ def validate_structural(cfg: RunConfig) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def binary_filename(base_name: str) -> str:
-    """Platform executable filename: appends ``.exe`` on Windows (DESIGN §5.2)."""
-    return f"{base_name}.exe" if os.name == "nt" else base_name
+def binary_filename(base_name: str, os_name: str | None = None) -> str:
+    """Platform executable filename: appends ``.exe`` on Windows (DESIGN §5.2).
+
+    ``os_name`` defaults to the live ``os.name``; tests pass it explicitly so the
+    Windows branch can be exercised on POSIX without monkeypatching the global
+    ``os.name`` (which would make ``pathlib.Path`` build an unusable ``WindowsPath``).
+    """
+    if os_name is None:
+        os_name = os.name
+    return f"{base_name}.exe" if os_name == "nt" else base_name
 
 
-def find_binary(bin_dir: str, base_name: str) -> Path | None:
+def find_binary(bin_dir: str, base_name: str, os_name: str | None = None) -> Path | None:
     """Resolve a llama.cpp executable (DESIGN §5.2).
 
     Appends ``.exe`` on Windows. If ``bin_dir`` is set, look there; otherwise fall
-    back to ``shutil.which`` (which honors ``PATHEXT`` on Windows).
+    back to ``shutil.which`` (which honors ``PATHEXT`` on Windows). ``os_name`` is
+    forwarded to :func:`binary_filename` (see its note on why it is parameterized).
     """
-    name = binary_filename(base_name)
+    name = binary_filename(base_name, os_name=os_name)
     if bin_dir:
         candidate = Path(bin_dir).expanduser() / name
         return candidate if candidate.exists() else None

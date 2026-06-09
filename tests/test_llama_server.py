@@ -6,7 +6,6 @@ teardown issues surface before real-hardware work.
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pytest
@@ -88,26 +87,24 @@ def test_build_launch_args_ngl_all_and_int():
 # --------------------------------------------------------------------------- #
 
 
-def test_find_binary_appends_exe_on_windows(tmp_path, monkeypatch):
-    monkeypatch.setattr(os, "name", "nt")
+def test_find_binary_appends_exe_on_windows(tmp_path):
+    # Pass os_name explicitly instead of monkeypatching the global os.name:
+    # under os.name == "nt", pathlib.Path resolves to WindowsPath, which cannot
+    # be instantiated on POSIX (and would crash pytest's own report machinery).
     (tmp_path / "llama-server.exe").write_text("x")
-    found = config.find_binary(str(tmp_path), "llama-server")
+    found = config.find_binary(str(tmp_path), "llama-server", os_name="nt")
     assert found is not None and found.name == "llama-server.exe"
 
 
-def test_binary_filename_suffix_logic(monkeypatch):
-    # Test the name-construction branch directly (instantiating PosixPath on
-    # Windows is impossible, so we can't exercise the full posix find_binary here).
-    monkeypatch.setattr(os, "name", "nt")
-    assert config.binary_filename("llama-server") == "llama-server.exe"
-    monkeypatch.setattr(os, "name", "posix")
-    assert config.binary_filename("llama-server") == "llama-server"
+def test_binary_filename_suffix_logic():
+    assert config.binary_filename("llama-server", os_name="nt") == "llama-server.exe"
+    assert config.binary_filename("llama-server", os_name="posix") == "llama-server"
 
 
-def test_find_binary_missing_returns_none(tmp_path, monkeypatch):
-    monkeypatch.setattr(os, "name", "nt")
-    monkeypatch.setattr(config.shutil, "which", lambda *_: None)
-    assert config.find_binary(str(tmp_path), "llama-server") is None
+def test_find_binary_missing_returns_none(tmp_path):
+    # bin_dir is set but holds no llama-server.exe -> None (no PATH fallback when
+    # bin_dir is given).
+    assert config.find_binary(str(tmp_path), "llama-server", os_name="nt") is None
 
 
 def test_find_binary_path_fallback(monkeypatch):
