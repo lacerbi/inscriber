@@ -45,11 +45,17 @@ OpenReview URL above when needed.
      blockquotes are VLM prose; a different model writes different-but-valid
      text. Judge them against the actual figure (axes, panels, trends,
      quoted numbers), not against the gold wording.
-   - **Known don't-care gaps in the gold** (see "Known remaining gaps" in the
-     fixes record): bold significance markers in tables are not reproduced;
-     appendix-B multi-line derivations have collapsed per-line equation
-     labels; Table A8's colspan header is flattened. A candidate that gets
-     these *right* beats the gold — update the gold accordingly.
+   - **Known gaps in the gold** (see "Known remaining gaps" in the fixes
+     record) — differences here are not candidate errors, and a candidate
+     that gets them *right* beats the gold (update the gold and log it):
+     - **Bold significance markers in tables** — wanted, not don't-care:
+       the captions ("Significantly best results … in bold") currently
+       dangle. Marginally important, but recovering bold from the table
+       crops would be a real win — score correct bold recovery as a plus,
+       never as diff noise (tracked in TODO.md).
+     - Appendix-B multi-line derivations have collapsed per-line equation
+       labels.
+     - Table A8's colspan header is flattened.
 4. Score against the baseline tally at the bottom of the fixes record (table
    structure and plausible math-symbol substitutions were the dominant error
    classes; numeric table values were almost entirely correct).
