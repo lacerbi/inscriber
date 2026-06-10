@@ -1,8 +1,9 @@
 # PLAN: Cropped table input for the VLM restructuring pass
 
 > **Status: EXECUTED** (2026-06-10). Archived design record of the implementation
-> session; the authoritative spec is DESIGN §9.7, the remaining work (the
-> real-hardware prompt-pin validation) is tracked in `TODO.md`.
+> session; the authoritative spec is DESIGN §9.7. The real-hardware validation
+> completed the same day — `dev/notes/2026-06-10-cropped-table-validation.md`
+> (cropped prompt frozen; caption-carried matcher fix; digit-coverage guard).
 
 Implements the unblocked TODO item ([TODO.md](../../TODO.md) §Table-restructuring):
 crop the `table[[bbox]]` region from the page raster and send the crop to the

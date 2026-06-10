@@ -89,6 +89,37 @@ TABLE_CROP_PADDING = 0.02
 # readable table — treat it as unmatched and fall back to the whole-page path.
 MIN_TABLE_REGION_SPAN = 0.01
 
+# Digit-coverage floor for a restructured table (DESIGN §9.7). Calibrated on
+# the 2026-06-10 validation run (dev/notes/2026-06-10-cropped-table-validation.md):
+# every healthy output — correct fusion re-splits included — scored >= 0.976;
+# the one silent 6-row drop scored 0.664. Wide margin on both sides.
+MIN_DIGIT_COVERAGE = 0.8
+
+_ENTITY_RE = re.compile(r"&#?\w+;")
+_NON_DIGIT_RE = re.compile(r"\D")
+
+
+def digit_coverage_ok(
+    blob: str, table_md: str, *, min_ratio: float = MIN_DIGIT_COVERAGE
+) -> bool:
+    """Whether a restructured table preserves the OCR blob's numeric content.
+
+    The guard signal is the **digit stream** (every digit, concatenated): it is
+    invariant under correct re-segmentation — splitting the fused
+    ``159.99346.68300.4`` into ``159.9 | 9346.6 | 8300.4`` keeps every digit —
+    while silently dropped rows/columns delete a visible chunk of it (the
+    failure the old value-count idea could not catch without false positives
+    on merged cells). One-sided by design: *added* digits (split labels,
+    duplicated cells) are not data loss. Tags and entities are stripped from
+    the blob first (``colspan="2"``, ``&#x27;`` would inflate its count).
+    """
+    blob_text = _ENTITY_RE.sub(" ", _HTML_TAG_RE.sub(" ", blob))
+    blob_digits = len(_NON_DIGIT_RE.sub("", blob_text))
+    if blob_digits == 0:
+        return True  # nothing numeric to lose
+    out_digits = len(_NON_DIGIT_RE.sub("", table_md))
+    return out_digits >= min_ratio * blob_digits
+
 
 def match_table_regions(
     blobs: list[str], regions: list[Region]

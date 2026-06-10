@@ -148,8 +148,10 @@ not a reliable baseline (false positives and negatives).
   with boxes, so there is no clean table bbox to crop to. Open problem.
   *(Superseded 2026-06-10: that was build-9028 behavior — on ≥9587 DeepSeek
   emits `table[[bbox]]` + `table_caption[[bbox]]` regions at every render size
-  (`2026-06-10-e2e-quality-findings.md` §Render-size experiment). The
-  cropped-table item is unblocked and re-filed in `TODO.md`.)*
+  (`2026-06-10-e2e-quality-findings.md` §Render-size experiment). Cropped
+  input shipped and was validated the same day — crop better on 7/10 tables,
+  plus a digit-coverage guard for silent data loss
+  (`2026-06-10-cropped-table-validation.md`, DESIGN §9.7).)*
 
 ## Next steps (if implemented)
 

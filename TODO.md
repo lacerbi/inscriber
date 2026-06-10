@@ -8,36 +8,22 @@ Legend: `[ ]` todo · `[!]` blocked.
 
 ## Table-restructuring pass (DESIGN §9.7)
 
-- [ ] **Cropped table input — validate on real hardware** (the prompt-pin
-      gate). The mechanics shipped 2026-06-10 (DESIGN §9.7): blobs are
-      content-matched to grounded `table[[bbox]]` regions, the crop (+0.02
-      padding) is cut from the verbatim page raster and sent to the VLM with a
-      new **cropped prompt variant** (locator → crop preamble; shared tail
-      pinned by test); unmatched blobs fall back to the validated whole-page
-      path (INFO line); cache key = raster hash + bbox + padding (conditional —
-      whole-page keys preserved). Per the §9.7 pinned-prompt rule the cropped
-      variant is **not validated yet** — run `dev/scripts/table_crop_check.py`
-      against the PriorGuide table pages and:
-      (i) **inspect every crop for completeness** — a clipped crop contradicts
-      "never drop values" and is the dangerous case;
-      (ii) diff page-input vs crop-input outputs cell-by-cell against the PDF
-      (baseline: 2 clean / 3 value-perfect-wrong-shape / 5 damaged,
-      `dev/notes/2026-06-10-e2e-quality-findings.md` §Tables — the fusion
-      splits `159.99346.6…` and `1010` merges are the target);
-      (iii) capture a real table-page raw output as a committed parser fixture
-      (no current fixture contains `table[[bbox]]`);
-      (iv) record a dated note and mark the cropped prompt validated in DESIGN
-      §9.7 — or revert to whole-page input if it regresses.
-- [ ] **Guard against silent structure damage** in restructured tables —
-      the worst observed failure is a syntactically clean table that silently
-      dropped an entire column group (Table 1 in
-      `dev/notes/2026-06-10-e2e-quality-findings.md`; also per-row cell drift, row-label
-      misalignment). The old value-count check stays rejected (DeepSeek merges
-      cells, so the blob is no baseline), but options remain: prompt-level
-      column-count echo (pinned prompt — re-validate on real hardware before
-      touching, §9.7), a header-width vs page-image consistency probe, or at
-      minimum flagging wide/multi-header tables as low-confidence in the
-      transcription notice. Investigation item — no chosen design yet.
+- [ ] **Guard against silent SHAPE damage** in restructured tables — the
+      data-loss half of this item shipped 2026-06-10: the **digit-coverage
+      guard** (`MIN_DIGIT_COVERAGE = 0.8`, DESIGN §9.7) rejects an output that
+      lost a chunk of the blob's digit stream (calibrated: healthy ≥ 0.976,
+      the one silent 6-row drop 0.664 —
+      `dev/notes/2026-06-10-cropped-table-validation.md`). What the guard
+      CANNOT see, per the validation run's residual list: blob header
+      misreads faithfully propagated (`q_mild/q_strong/q_mixture` → `q&out`
+      ×3 — an OCR subscript limit), sparse-row cell drift (the mostly-`—`
+      SIR/RS rows misplace 1–2 cells), single-cell value slips (`±0.24` for
+      `±0.19`), and digit-neutral shape damage (transposes, phantom empty
+      columns). Options remain: prompt-level column-count echo (pinned
+      prompt — re-validate on real hardware before touching, §9.7), a
+      header-width vs image consistency probe, or flagging wide/multi-header
+      tables as low-confidence in the transcription notice. Investigation
+      item — no chosen design yet.
 - [ ] **System/user message split** of the table prompt (static instructions as
       a system message → llama-server prefix-cache reuse, possible adherence
       gain). The validated prompt is a single user message — re-validate on

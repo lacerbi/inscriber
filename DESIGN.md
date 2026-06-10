@@ -12,7 +12,19 @@
 > `paper2llm`). It is written to be read entirely standalone — every concept,
 > dependency, and external quirk needed to build v1 is described here.
 >
-> **Last updated:** 2026-06-10 (§2.2/§8.5/§8.6/§16: **OCR loop/truncation
+> **Last updated:** 2026-06-10 (§2.2/§9.7: **cropped table input VALIDATED on
+> real hardware and frozen** (`dev/notes/2026-06-10-cropped-table-validation.md`,
+> all 10 PriorGuide tables page-vs-crop: crop better 7 / equal 2 / worse 1;
+> both fusion-split probes and the row-drift probe fixed exactly; crops
+> complete 10/10). Two corrections from the run: the matcher now anchors on
+> the **caption-carried blob** — on real 9587 output `table[[bbox]]` is an
+> EMPTY block, like `image`, and the following `table_caption` block carries
+> caption + `<table>` HTML (§2.2; fixture
+> `tests/fixtures/deepseek_paper_table_p27_raw.txt`) — and a new
+> **digit-coverage guard** (`MIN_DIGIT_COVERAGE = 0.8`, §9.7) catches the one
+> observed catastrophic mode, a clean-looking table that silently dropped 6
+> rows (coverage 0.664 vs ≥ 0.976 for every healthy output) → raw blob kept.
+> Earlier same day — §2.2/§8.5/§8.6/§16: **OCR loop/truncation
 > detection** — a page whose generation stops at the token cap instead of EOS
 > (`finish_reason != "stop"`, the repetition-loop signature) is now flagged
 > `truncated`: the best-effort parse is kept, the pipeline warns loudly, and
@@ -28,8 +40,8 @@
 > from the verbatim page raster, instead of the whole page the VLM downscales
 > to ~896 px; unmatched blobs fall back to the validated whole-page path with
 > an INFO line. New cropped prompt variant (shared tail pinned by test;
-> ⚠️ awaiting real-hardware validation — harness:
-> `dev/scripts/table_crop_check.py`, checklist: `TODO.md`) and a crop-aware
+> validated later the same day, see the top entry — harness:
+> `dev/scripts/table_crop_check.py`) and a crop-aware
 > cache key — (raster hash + bbox + padding), added conditionally so
 > whole-page keys and warm caches are preserved. Earlier same day —
 > §2.2/§7/§13/§19: **`gundam` now renders 2048 px
@@ -1186,9 +1198,13 @@ user message, image first:
 - **Cropped** — same prompt with the locator replaced by a crop preamble (a
   cropped image needs no on-page disambiguation) and "the page image" reworded;
   everything from the OCR caveat onward is byte-identical (pinned by a test).
-  ⚠️ **Pending real-hardware validation** — `dev/scripts/table_crop_check.py`
-  is the harness, `TODO.md` has the checklist (crop completeness must be
-  inspected: a clipped crop contradicts "never drop values").
+  ✅ **Validated on real hardware and frozen**
+  (`dev/notes/2026-06-10-cropped-table-validation.md`, all 10 PriorGuide
+  tables, page-vs-crop): crop better on 7, equal on 2 — including both
+  fusion-split probes and the row-drift probe, fixed exactly — and worse on 1
+  (a silent 6-row drop on the densest table, which is what the digit-coverage
+  guard below now catches). Crop completeness was 10/10 (bbox + 0.02 padding;
+  only harmless caption/body slivers).
 
 ⚠️ **Treat the prompt texts and message shape as pinned**: every ingredient was
 added after a simpler version failed (history in the findings note) — do not
@@ -1211,6 +1227,16 @@ context already sees clean tables):
   (`finish_reason != "stop"`), commentary, empty — keeps the original blob**,
   which still holds every value. (A value-count check was considered and
   rejected: DeepSeek merges cells, so the blob's count is not a baseline.)
+- **Digit-coverage guard** (`digit_coverage_ok`, `MIN_DIGIT_COVERAGE = 0.8`) —
+  the silent-data-loss detector: the blob's **digit stream** (every digit,
+  concatenated; tags/entities stripped first) must reappear in the output at
+  ≥ 80%. The stream is invariant under correct re-segmentation (splitting the
+  fused `159.99346.68300.4` keeps every digit), while dropped rows delete a
+  visible chunk — this is what the rejected value-count idea could not do.
+  Calibrated on the validation run: healthy outputs ≥ 0.976, the one silent
+  6-row drop 0.664 (`dev/notes/2026-06-10-cropped-table-validation.md`).
+  Below the floor → keep the blob, never cache. One-sided: added digits are
+  not data loss.
 - **One VLM server for both passes** — the orchestrator's lazy `_VlmSession`
   starts the server on the first cache miss from either pass and shares it
   (along with the one backend instance and `VlmCache` both passes' keys are

@@ -31,6 +31,7 @@ from inscriber.postprocess.tables import (
     TABLE_PROMPT_TEMPLATE,
     TABLE_PROMPT_TEMPLATE_CROPPED,
     blob_is_refinable,
+    digit_coverage_ok,
     find_table_blobs,
     format_table_prompt,
     locator_text,
@@ -289,6 +290,35 @@ def test_sanitize_rejects_commentary_and_non_tables():
     assert sanitize_table_output("| single row |") is None
     assert sanitize_table_output("") is None
     assert sanitize_table_output(None) is None
+
+
+# --------------------------------------------------------------------------- #
+# digit-coverage guard (silent-data-loss; DESIGN §9.7)
+# --------------------------------------------------------------------------- #
+
+
+def test_digit_coverage_accepts_correct_resegmentation():
+    # The digit stream is invariant under re-splitting fused values — the
+    # validated fusion fix (159.99346.68300.4 → 159.9 | 9346.6 | 8300.4).
+    blob = '<table><td rowspan="2">Turin159.99346.68300.41037.48.8</td></table>'
+    out = "| Turin | 159.9 | 9346.6 | 8300.4 | 1037.4 | 8.8 |"
+    assert digit_coverage_ok(blob, out)
+
+
+def test_digit_coverage_rejects_dropped_rows():
+    blob = "<table>A0.11B0.22C0.33D0.44E0.55F0.66</table>"
+    out = "| A | 0.11 |\n| B | 0.22 |"  # 4 of 12 digits: rows silently dropped
+    assert not digit_coverage_ok(blob, out)
+
+
+def test_digit_coverage_ignores_tag_and_entity_digits():
+    # colspan="4" / rowspan="3" / &#x27; must not inflate the blob's count.
+    blob = '<table><td colspan="4" rowspan="3">x&#x27;s value 7</td></table>'
+    assert digit_coverage_ok(blob, "| x's value | 7 |")
+
+
+def test_digit_coverage_trivially_ok_without_digits():
+    assert digit_coverage_ok("<table><td>alpha</td></table>", "| alpha | beta |")
 
 
 def test_splice_tables_replaces_blob_with_spacing():
@@ -608,6 +638,20 @@ def test_commentary_table_output_keeps_blob(tmp_path, monkeypatch, hermetic_cach
     pipeline.run(cfg)
     text = (out / "sample_paper.md").read_text(encoding="utf-8")
     assert BLOB in text
+
+
+def test_value_dropping_table_output_keeps_blob(tmp_path, monkeypatch, hermetic_cache):
+    # A syntactically clean pipe table that silently lost the blob's number
+    # (the worst observed failure class) must be rejected by the
+    # digit-coverage guard — the raw blob still holds every value.
+    dropping = "| Dep. Variable | CC |\n| --- | --- |\n| Model | OLS |"
+    _mock_inference(monkeypatch, table_response=dropping)
+    out = tmp_path / "out"
+    cfg = _base_cfg(tmp_path, _dummy_models(tmp_path), out)
+    pipeline.run(cfg)
+    text = (out / "sample_paper.md").read_text(encoding="utf-8")
+    assert BLOB in text
+    assert "| Model | OLS |" not in text
 
 
 def test_tables_refined_even_without_figures(tmp_path, monkeypatch, hermetic_cache):

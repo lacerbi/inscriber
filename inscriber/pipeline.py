@@ -89,8 +89,10 @@ from inscriber.postprocess.stitch import (
     strip_running_headers_footers,
 )
 from inscriber.postprocess.tables import (
+    MIN_DIGIT_COVERAGE,
     TABLE_CROP_PADDING,
     blob_is_refinable,
+    digit_coverage_ok,
     find_table_blobs,
     match_table_regions,
     sanitize_table_output,
@@ -600,6 +602,15 @@ def _refine_tables(cfg: RunConfig, pages: list[_Page], session: _VlmSession) -> 
                 logger.warning(
                     "table %d/%d (page %d): truncated/unusable output; keeping raw OCR table",
                     done, total, pg.page_number,
+                )
+                continue
+            if not digit_coverage_ok(blob, table_md):
+                # The silent-data-loss guard (DESIGN §9.7): a clean-looking
+                # table that dropped rows/columns. Never cached.
+                logger.warning(
+                    "table %d/%d (page %d): restructured table lost numeric "
+                    "content (digit coverage below %d%%); keeping raw OCR table",
+                    done, total, pg.page_number, round(MIN_DIGIT_COVERAGE * 100),
                 )
                 continue
             vlm_cache.put(key, table_md)
