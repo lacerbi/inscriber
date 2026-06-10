@@ -31,18 +31,26 @@ Legend: `[ ]` todo · `[!]` blocked.
 
 ## Upstream llama.cpp watch (researched 2026-06-10 — `dev/notes/2026-06-10-upstream-watch.md`)
 
-- [ ] **DeepSeek-OCR 2 spike** — upstream support landed (llama.cpp PR #20975,
-      2026-05-29; GGUFs at `sabafallah/DeepSeek-OCR-2-GGUF`, bf16 5.9+0.9 GB).
-      Paper: +3.73% OmniDocBench, reading order 0.085→0.057, repetition rate
-      ~⅓ lower (our loop class), and the llama.cpp impl ships WITH multi-tile
-      dynamic resolution. Gated on: (i) grounding format + coordinate frame
-      under tiling — full M1a calibration discipline, `gundam_check.py`
-      reusable; (ii) loop check on the known-bad page (PriorGuide p. 5);
-      (iii) real-page format capture → fixtures. The pinned build 9587
-      already includes v2 support (no build upgrade needed); requires a new
-      `deepseek-ocr-2` backend (different server template/flags —
-      `--chat-template deepseek-ocr --no-jinja`, `--flash-attn off`, its own
-      DRY tuning); zero pipeline changes (§8).
+- [!] **DeepSeek-OCR 2 adoption** — the verification spike RAN 2026-06-10
+      (`dev/notes/2026-06-10-dsocr2-spike-findings.md`; harness
+      `dev/scripts/dsocr2_check.py`, re-runnable on any build; bf16 GGUFs
+      local). All three gating questions answered: grounding format/frame
+      confirmed per-axis + render-size-invariant under tiling (`grid_to_norm`
+      carries over), and the v1 known-loop page (PriorGuide p. 5) completes
+      cleanly with per-row equation tags. **Blocked on a new finding: dense
+      tables silently lose ≥47% of numeric values at the best render**
+      (PriorGuide Tables 1+2: v1 kept 216/216, v2's best was 114/216 @1024 —
+      both server and mtmd-cli paths), including one blob that degenerated
+      into a self-terminating spam run invisible to `finish_reason`. That
+      breaks the §9.7 raw-blob fallback premise, so adoption is deferred.
+      The loss is most likely a llama.cpp implementation issue (the new
+      Qwen2-encoder attention mask is the prime suspect; evidence in the
+      note), so the posture is wait-for-upstream: re-run the spike on future
+      builds (discriminating test if needed: HF reference on the same page).
+      If table retention is fixed, the backend work is scoped in the note
+      (parser deltas: `figure_title` captions, caption-before-table block
+      order, `table` carries its own blob, multi-`image` figures; render
+      target 1024–1280 — v2's encoding saturates there, 2048 buys nothing).
 - [ ] **v1 Gundam tiling** — descoped from #17400; the follow-up PR #24300 was
       closed 2026-06-09 in favor of a generic batching API (PR #24384, WIP
       draft). Watch #24384 + the DSOCR re-adaptation on top of it; stall risk

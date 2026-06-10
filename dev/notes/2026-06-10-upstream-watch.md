@@ -44,6 +44,12 @@ waiting — if upstream tiling lands, `gundam` becomes real tiling and the
 
 ## 2. DeepSeek-OCR 2: merged upstream 2026-05-29
 
+> **Status (2026-06-10, later the same day):** the gating spike at the bottom
+> of this section RAN — `dev/notes/2026-06-10-dsocr2-spike-findings.md`. All
+> three unknowns answered (frame per-axis + render-invariant under tiling;
+> the known-bad page no longer loops; format captured). **Adoption deferred**
+> on a new finding: silent dense-table value loss (≥47% of numeric cells).
+
 [PR #20975](https://github.com/ggml-org/llama.cpp/pull/20975) (also sfallah)
 added DeepSeek-OCR-2 — this **invalidated** DESIGN's earlier "no llama.cpp
 path for v2" claim (§2.2/§22.2 updated 2026-06-10). Needs a build newer than

@@ -12,7 +12,15 @@
 > `paper2llm`). It is written to be read entirely standalone — every concept,
 > dependency, and external quirk needed to build v1 is described here.
 >
-> **Last updated:** 2026-06-10 (§3.1/§11/§13.2: new **`inscriber join BASE`
+> **Last updated:** 2026-06-10 (§2.2/§22.2: **DeepSeek-OCR-2 spike ran —
+> adoption deferred.** Format + per-axis frame confirmed under tiling (the
+> M1a calibration discipline; frame render-size-invariant, `grid_to_norm`
+> carries over) and the v1 known-loop page completes cleanly with per-row
+> equation tags — but **dense tables silently lose ≥47% of numeric values**
+> on both server and mtmd-cli paths, breaking the §9.7 raw-blob fallback
+> premise (`dev/notes/2026-06-10-dsocr2-spike-findings.md`; harness
+> `dev/scripts/dsocr2_check.py`; re-test gate in `TODO.md`). Earlier same
+> day — §3.1/§11/§13.2: new **`inscriber join BASE`
 > subcommand** — rejoin (possibly hand-edited) `{base}.main/.appendix/
 > .backmatter.md` splits into `{base}.md`, the §11 allparts form: per-file
 > notice footers and main's BibTeX block are stripped, the parts joined in
@@ -210,10 +218,14 @@ So **every** model `inscriber` uses (OCR and VLM) is configured as a
   (`sabafallah/DeepSeek-OCR-2-GGUF`). It is a **different backend, not a
   drop-in** — on the server path v2 *requires* `--chat-template deepseek-ocr
   --no-jinja` (v1 must NOT pass a template), plus `--flash-attn off` and its
-  own DRY tuning — and its grounding format/coordinate frame in llama.cpp are
-  **unverified**. **v1 targets the original DeepSeek-OCR** (arXiv 2510.18234,
-  the DeepSeek3B-MoE-A570M decoder, PR #17400); adopting v2 is gated on the
-  verification spike in `TODO.md` (§22.2; research record:
+  own DRY tuning. The verification spike RAN 2026-06-10
+  (`dev/notes/2026-06-10-dsocr2-spike-findings.md`): grounding format/frame
+  confirmed (same block layout, same per-axis render-invariant frame, even
+  under tiling) and the v1 known-loop page completes cleanly — but **adoption
+  is deferred**: v2 silently loses ≥47% of dense-table numeric values
+  (breaking the §9.7 raw-blob fallback premise). **v1 targets the original
+  DeepSeek-OCR** (arXiv 2510.18234, the DeepSeek3B-MoE-A570M decoder,
+  PR #17400); the re-test gate lives in `TODO.md` (§22.2; research record:
   `dev/notes/2026-06-10-upstream-watch.md`).
 - **Quirks (must be respected):**
   - Use **f16** weights. **Q4_K_M causes runaway repetition loops** because the
@@ -2148,11 +2160,15 @@ is wired.
   +3.73% OmniDocBench, reading-order edit 0.085→0.057, repetition rate ~⅓
   lower, native multi-tile dynamic resolution) — **upstream support landed**
   (llama.cpp PR #20975, merged 2026-05-29; GGUFs available; **the pinned
-  build 9587 already includes it**, so no build upgrade is needed). A likely
-  upgrade, gated on the spike in `TODO.md`: its grounding format + coordinate
-  frame **under real tiling** must be confirmed with the M1a calibration
-  discipline, and it needs a new `deepseek-ocr-2` backend (different server
-  template/flags). Research record: `dev/notes/2026-06-10-upstream-watch.md`.
+  build 9587 already includes it**). The verification spike ran 2026-06-10
+  (`dev/notes/2026-06-10-dsocr2-spike-findings.md`): format + per-axis frame
+  confirmed under tiling with the M1a calibration discipline, the v1
+  known-loop page completes cleanly — but **adoption deferred** on silent
+  dense-table value loss (≥47% of numeric cells at the best render; breaks
+  the §9.7 fallback premise). Re-test on future builds (`TODO.md`); the
+  backend work (a `deepseek-ocr-2` backend — different server template/flags,
+  parser deltas, 1024–1280 render target) is scoped in the spike note.
+  Research record: `dev/notes/2026-06-10-upstream-watch.md`.
 - **BibTeX refinements** (§12 shipped the `auto` chain; deferred from
   `dev/plans/PLAN-bibtex-auto.md`): a `--bibtex-source` CLI axis; **Crossref** as an
   additional source; S2 **by-DOI** lookup for bioRxiv/medRxiv provenance
