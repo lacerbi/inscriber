@@ -1,9 +1,9 @@
 """OCR cache: content-addressed per-page memoization (DESIGN §8.6).
 
 Per-page OCR is the expensive step. The cache key includes everything that can
-change the output (model + projector identities, resolution + render size, prompt,
-sampling). Entries are written **per page** so an interrupted run resumes from the
-last completed page.
+change the output (model + projector identities, the llama.cpp build identity,
+resolution + render size, prompt, sampling). Entries are written **per page** so an
+interrupted run resumes from the last completed page.
 
 ``--refresh`` (``refresh=True``) ignores + recomputes + overwrites; ``--no-cache``
 (``enabled=False``) neither reads nor writes (DESIGN §8.6, §13).
@@ -26,7 +26,9 @@ logger = get_logger()
 # Bump if the stored value shape changes, so a future backend's richer result can't
 # collide with a v1 entry (DESIGN §8.6).
 OCR_VALUE_SCHEMA = 1
-VLM_VALUE_SCHEMA = 1
+# 2: value field renamed "description" → "text" (the store holds restructured tables
+# too). Rode the server-identity key change, which orphaned all v1 entries anyway.
+VLM_VALUE_SCHEMA = 2
 
 # In-process memoization of expensive file content hashes (keyed by path+size+mtime).
 _HASH_MEM: dict[tuple[str, int, int], str] = {}
@@ -93,12 +95,18 @@ def make_ocr_key(
     backend_name: str,
     model_identity: str,
     mmproj_identity: str,
+    server_identity: str,
     resolution_mode: str,
     render_long_edge_px: int,
     prompt: str,
     sampling: dict,
 ) -> str:
-    """Stable content-addressed key for one page's OCR (DESIGN §8.6)."""
+    """Stable content-addressed key for one page's OCR (DESIGN §8.6).
+
+    ``server_identity`` is the llama.cpp build serving inference
+    (:func:`inscriber.llama.server.llama_build_identity`) — upstream
+    preprocessing changes alter outputs at identical model/prompt/sampling.
+    """
     payload = json.dumps(
         {
             "pdf": pdf_hash,
@@ -106,6 +114,7 @@ def make_ocr_key(
             "backend": backend_name,
             "model": model_identity,
             "mmproj": mmproj_identity,
+            "server": server_identity,
             "resolution": resolution_mode,
             "long_edge": render_long_edge_px,
             "prompt": prompt,
@@ -175,6 +184,7 @@ def make_vlm_key(
     vlm_backend_name: str,
     vlm_model_identity: str,
     vlm_mmproj_identity: str,
+    server_identity: str,
     full_assembled_prompt: str,
     sampling: dict,
     chat_template_kwargs: dict | None = None,
@@ -184,7 +194,8 @@ def make_vlm_key(
     Keyed on the **fully assembled prompt — context text included** — so changing
     ``context_chars`` or the page text doesn't serve a stale description.
     ``chat_template_kwargs`` (e.g. Gemma thinking activation) changes outputs, so
-    it is key material too. (No ``max_tokens``: generation is bounded only by
+    it is key material too, as is ``server_identity`` (the llama.cpp build — see
+    :func:`make_ocr_key`). (No ``max_tokens``: generation is bounded only by
     ``ctx_size``, which doesn't change a non-truncated output.)
     """
     payload = json.dumps(
@@ -193,6 +204,7 @@ def make_vlm_key(
             "backend": vlm_backend_name,
             "model": vlm_model_identity,
             "mmproj": vlm_mmproj_identity,
+            "server": server_identity,
             "prompt": full_assembled_prompt,
             "sampling": sampling,
             "chat_template_kwargs": chat_template_kwargs,
@@ -208,6 +220,7 @@ def make_table_key(
     vlm_backend_name: str,
     vlm_model_identity: str,
     vlm_mmproj_identity: str,
+    server_identity: str,
     full_assembled_prompt: str,
     sampling: dict,
     chat_template_kwargs: dict | None = None,
@@ -227,6 +240,7 @@ def make_table_key(
             "backend": vlm_backend_name,
             "model": vlm_model_identity,
             "mmproj": vlm_mmproj_identity,
+            "server": server_identity,
             "prompt": full_assembled_prompt,
             "sampling": sampling,
             "chat_template_kwargs": chat_template_kwargs,
@@ -272,13 +286,13 @@ class VlmCache:
             return None
         if data.get("value_schema") != VLM_VALUE_SCHEMA:
             return None
-        return data.get("description")
+        return data.get("text")
 
-    def put(self, key: str, description: str) -> None:
+    def put(self, key: str, text: str) -> None:
         if not self.enabled:
             return
         self.dir.mkdir(parents=True, exist_ok=True)
-        payload = {"value_schema": VLM_VALUE_SCHEMA, "description": description}
+        payload = {"value_schema": VLM_VALUE_SCHEMA, "text": text}
         target = self._path(key)
         tmp = target.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(payload), encoding="utf-8")

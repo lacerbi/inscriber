@@ -15,6 +15,7 @@ Cross-platform notes (DESIGN §5.3, §15):
 from __future__ import annotations
 
 import atexit
+import re
 import socket
 import subprocess
 import tempfile
@@ -74,6 +75,72 @@ def _terminate_all() -> None:  # pragma: no cover - exercised only on process ex
         procs = list(_ACTIVE)
     for proc in procs:
         _terminate(proc)
+
+
+# In-process memoization of the build-identity probe (keyed by exe path+size+mtime,
+# like the model-hash memo in cache.py — one subprocess spawn per run, not per page).
+_BUILD_ID_MEM: dict[tuple[str, int, int], str] = {}
+
+
+def llama_build_identity(bin_dir: str, endpoint: str = "") -> str:
+    """Identity of the llama.cpp build that will serve inference — OCR/VLM
+    cache-key material (DESIGN §8.6).
+
+    Upstream preprocessing/sampling changes (e.g. llama.cpp PR #23345) alter
+    model outputs across builds with identical model/prompt/sampling, so the
+    build must bust the caches. Spawn mode probes ``llama-server --version``
+    (no model load; memoized per binary). Endpoint mode asks the running
+    server's ``/props`` for its ``build_info``; if that is unavailable it
+    degrades to ``"unknown"`` with a warning rather than failing the run.
+    """
+    if endpoint:
+        url = endpoint.rstrip("/") + "/props"
+        try:
+            data = httpx.get(url, timeout=10.0).json()
+            info = data.get("build_info") if isinstance(data, dict) else None
+            if info:
+                return str(info)
+        except (httpx.HTTPError, ValueError):
+            pass
+        logger.warning(
+            "could not read build_info from %s; cache keys will not reflect "
+            "the endpoint's llama.cpp build (stale entries possible after a "
+            "server upgrade — use --refresh then)",
+            url,
+        )
+        return "unknown"
+
+    exe = find_binary(bin_dir, "llama-server")
+    if exe is None:
+        raise ServerError(
+            "llama-server binary not found "
+            f"(llama.bin_dir={bin_dir!r}; not on PATH either) — needed to key "
+            "caches on the llama.cpp build"
+        )
+    st = exe.stat()
+    mem_key = (str(exe), st.st_size, st.st_mtime_ns)
+    if mem_key not in _BUILD_ID_MEM:
+        try:
+            proc = subprocess.run(
+                [str(exe), "--version"], capture_output=True, text=True, timeout=60
+            )
+        except (OSError, subprocess.TimeoutExpired) as e:
+            raise ServerError(f"failed to probe `{exe} --version`: {e}") from e
+        # The probe prints e.g. "version: 9587 (d2e22ed97)" (on stderr) plus a
+        # compiler/OS line; keep just the version line — toolchain churn doesn't
+        # change model output.
+        text = (proc.stdout or "") + (proc.stderr or "")
+        match = re.search(r"^version:.*$", text, re.MULTILINE)
+        if match:
+            identity = match.group(0).strip()
+        elif proc.returncode == 0 and text.strip():
+            identity = text.strip()
+        else:
+            raise ServerError(
+                f"`{exe} --version` failed (exit {proc.returncode}): {text.strip()[:500]}"
+            )
+        _BUILD_ID_MEM[mem_key] = identity
+    return _BUILD_ID_MEM[mem_key]
 
 
 def _free_port(host: str) -> int:

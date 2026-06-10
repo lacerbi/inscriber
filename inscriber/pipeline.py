@@ -37,7 +37,12 @@ from inscriber.cache import (
 from inscriber.config import ConfigError, find_binary
 from inscriber.input.resolver import resolve_input
 from inscriber.llama.client import ChatClient
-from inscriber.llama.server import LlamaServerManager, ServerSpec, endpoint_or_serve
+from inscriber.llama.server import (
+    LlamaServerManager,
+    ServerSpec,
+    endpoint_or_serve,
+    llama_build_identity,
+)
 from inscriber.logging import get_logger
 from inscriber.models import (
     Figure,
@@ -142,13 +147,18 @@ def _build_ocr_backend(cfg: RunConfig):
     return get_ocr_backend(cfg.ocr.backend, figures_enabled=figures_enabled)
 
 
-def _ocr_identities(cfg: RunConfig, cache: OcrCache) -> tuple[str, str]:
-    """Stable model/mmproj identities for the OCR cache key (DESIGN §8.6)."""
+def _ocr_identities(cfg: RunConfig, cache: OcrCache) -> tuple[str, str, str]:
+    """Stable model/mmproj/server identities for the OCR cache key (DESIGN §8.6).
+
+    The server identity (the llama.cpp build) is probed via ``--version`` — no
+    server launch — or, in endpoint mode, from the running server's ``/props``.
+    """
     if cfg.ocr.endpoint:
         # Key on the endpoint URL too — the model path may be empty/unchanged while
         # the endpoint serves a different model, which would otherwise collide.
         ep = cfg.ocr.endpoint
-        return f"endpoint:{ep}:{cfg.ocr.model}", f"endpoint:{ep}:{cfg.ocr.mmproj}"
+        server_id = llama_build_identity(cfg.llama.bin_dir, endpoint=ep)
+        return f"endpoint:{ep}:{cfg.ocr.model}", f"endpoint:{ep}:{cfg.ocr.mmproj}", server_id
     for label, path in (("ocr.model", cfg.ocr.model), ("ocr.mmproj", cfg.ocr.mmproj)):
         if not path or not Path(path).expanduser().is_file():
             raise ConfigError(f"{label} file not found: {path}")
@@ -157,6 +167,7 @@ def _ocr_identities(cfg: RunConfig, cache: OcrCache) -> tuple[str, str]:
     return (
         file_identity(cfg.ocr.model, hash_disk_cache=disk),
         file_identity(cfg.ocr.mmproj, hash_disk_cache=disk),
+        llama_build_identity(cfg.llama.bin_dir),
     )
 
 
@@ -177,7 +188,7 @@ def run_ocr_pass(
 
     cache = OcrCache(enabled=cfg.cache.enabled, refresh=cfg.cache.refresh)
     pdf_hash = sha256_bytes(resolved.pdf_bytes)
-    model_identity, mmproj_identity = _ocr_identities(cfg, cache)
+    model_identity, mmproj_identity, server_identity = _ocr_identities(cfg, cache)
     prompt = backend.prompt()
     # The cache key's sampling includes max_tokens (a hard generation guard, §8.6).
     sampling = {**backend.sampling(), "max_tokens": backend.max_tokens()}
@@ -192,6 +203,7 @@ def run_ocr_pass(
             backend_name=backend.name,
             model_identity=model_identity,
             mmproj_identity=mmproj_identity,
+            server_identity=server_identity,
             resolution_mode=mode.value,
             render_long_edge_px=mode.long_edge_px,
             prompt=prompt,
@@ -312,11 +324,12 @@ class _VlmSession:
         self.endpoint = endpoint_override or cfg.vlm.endpoint
         self.proto = get_vlm_backend(cfg.vlm.backend)  # client attached on first miss
         self.cache = VlmCache(enabled=cfg.cache.enabled, refresh=cfg.cache.refresh)
-        self._identities: tuple[str, str] | None = None
+        self._identities: tuple[str, str, str] | None = None
         self._stack: ExitStack | None = None
 
-    def identities(self) -> tuple[str, str]:
-        """Model/mmproj identities for cache keys (no server launch needed)."""
+    def identities(self) -> tuple[str, str, str]:
+        """Model/mmproj/server identities for cache keys (probes the binary's
+        ``--version`` or the endpoint's ``/props``; no server launch needed)."""
         if self._identities is None:
             self._identities = _vlm_identities(self.cfg, self.cache)
         return self._identities
@@ -411,7 +424,7 @@ def _refine_tables(cfg: RunConfig, pages: list[_Page], session: _VlmSession) -> 
 
     proto = session.proto  # one instance: cache-key material AND inference (§9.2)
     vlm_cache = session.cache
-    model_id, mmproj_id = session.identities()
+    model_id, mmproj_id, server_id = session.identities()
 
     total = sum(len(entries) for _, _, _, entries in work)
     done = 0
@@ -428,6 +441,7 @@ def _refine_tables(cfg: RunConfig, pages: list[_Page], session: _VlmSession) -> 
                 vlm_backend_name=proto.name,
                 vlm_model_identity=model_id,
                 vlm_mmproj_identity=mmproj_id,
+                server_identity=server_id,
                 full_assembled_prompt=prompt,
                 sampling=proto.sampling(),
                 chat_template_kwargs=proto.chat_template_kwargs(),
@@ -466,10 +480,11 @@ def _refine_tables(cfg: RunConfig, pages: list[_Page], session: _VlmSession) -> 
     return refined
 
 
-def _vlm_identities(cfg: RunConfig, vlm_cache: VlmCache) -> tuple[str, str]:
+def _vlm_identities(cfg: RunConfig, vlm_cache: VlmCache) -> tuple[str, str, str]:
     if cfg.vlm.endpoint:
         ep = cfg.vlm.endpoint
-        return f"endpoint:{ep}:{cfg.vlm.model}", f"endpoint:{ep}:{cfg.vlm.mmproj}"
+        server_id = llama_build_identity(cfg.llama.bin_dir, endpoint=ep)
+        return f"endpoint:{ep}:{cfg.vlm.model}", f"endpoint:{ep}:{cfg.vlm.mmproj}", server_id
     for label, path in (("vlm.model", cfg.vlm.model), ("vlm.mmproj", cfg.vlm.mmproj)):
         if not path or not Path(path).expanduser().is_file():
             raise ConfigError(f"{label} file not found: {path}")
@@ -477,6 +492,7 @@ def _vlm_identities(cfg: RunConfig, vlm_cache: VlmCache) -> tuple[str, str]:
     return (
         file_identity(cfg.vlm.model, hash_disk_cache=hash_cache),
         file_identity(cfg.vlm.mmproj, hash_disk_cache=hash_cache),
+        llama_build_identity(cfg.llama.bin_dir),
     )
 
 
@@ -501,7 +517,7 @@ def _vlm_describe(
 
     proto = session.proto  # one instance: cache-key material AND inference (§9.2)
     vlm_cache = session.cache
-    model_id, mmproj_id = session.identities()
+    model_id, mmproj_id, server_id = session.identities()
 
     descriptions: dict[str, str] = {}
     keys: dict[str, str] = {}
@@ -513,6 +529,7 @@ def _vlm_describe(
             vlm_backend_name=proto.name,
             vlm_model_identity=model_id,
             vlm_mmproj_identity=mmproj_id,
+            server_identity=server_id,
             full_assembled_prompt=prompt,
             sampling=proto.sampling(),
             chat_template_kwargs=proto.chat_template_kwargs(),
@@ -628,12 +645,13 @@ def _write_documents(
     return [str(p) for p in written]
 
 
-def _ocr_meta(cfg: RunConfig, backend, model_id: str, mmproj_id: str) -> dict:
+def _ocr_meta(cfg: RunConfig, backend, model_id: str, mmproj_id: str, server_id: str) -> dict:
     mode = ResolutionMode(cfg.ocr.resolution)
     return {
         "backend": cfg.ocr.backend,
         "model_identity": model_id,
         "mmproj_identity": mmproj_id,
+        "server_identity": server_id,  # additive (bundle_schema stays 1, DESIGN §8.5)
         "resolution": cfg.ocr.resolution,
         "render_long_edge_px": mode.long_edge_px,
         "prompt": backend.prompt(),
@@ -658,7 +676,7 @@ def run_ocr(cfg: RunConfig) -> list[str]:
     with _workdir(cfg) as work:
         pages, results = run_ocr_pass(cfg, resolved, work)
         cache = OcrCache(enabled=cfg.cache.enabled, refresh=cfg.cache.refresh)
-        model_id, mmproj_id = _ocr_identities(cfg, cache)
+        model_id, mmproj_id, server_id = _ocr_identities(cfg, cache)
         working = _crop_pages(cfg, backend, resolved.pdf_bytes, pages, results, figures_dir)
         page_results = [
             OcrPageResult(page_number=p.page_number, markdown=p.markdown, regions=r.regions)
@@ -687,7 +705,7 @@ def run_ocr(cfg: RunConfig) -> list[str]:
             bdir,
             base_name=base,
             source=source,
-            ocr_meta=_ocr_meta(cfg, backend, model_id, mmproj_id),
+            ocr_meta=_ocr_meta(cfg, backend, model_id, mmproj_id, server_id),
             figure_detect=cfg.figure.detect,
             page_results=page_results,
             page_figures=page_figures,

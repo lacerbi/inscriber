@@ -237,6 +237,76 @@ def test_endpoint_or_serve_no_spawn(monkeypatch):
 
 
 # --------------------------------------------------------------------------- #
+# llama_build_identity — cache-key material (DESIGN §8.6)
+# --------------------------------------------------------------------------- #
+
+
+class FakeCompleted:
+    def __init__(self, returncode=0, stdout="", stderr=""):
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
+
+
+def test_build_identity_parses_version_line_and_memoizes(tmp_path, monkeypatch):
+    exe = tmp_path / "llama-server"
+    exe.write_bytes(b"binary")
+    monkeypatch.setattr(server_mod, "find_binary", lambda *_: exe)
+    calls = []
+
+    def fake_run(args, **kwargs):
+        calls.append(args)
+        # llama.cpp prints version info to stderr.
+        return FakeCompleted(stderr="version: 9587 (d2e22ed97)\nbuilt with Clang 20.1.8\n")
+
+    monkeypatch.setattr(server_mod.subprocess, "run", fake_run)
+    ident = server_mod.llama_build_identity(str(tmp_path))
+    # The version line only — toolchain churn doesn't change model output.
+    assert ident == "version: 9587 (d2e22ed97)"
+    assert server_mod.llama_build_identity(str(tmp_path)) == ident
+    assert len(calls) == 1  # memoized by binary path+size+mtime
+
+
+def test_build_identity_missing_binary_raises(monkeypatch):
+    monkeypatch.setattr(server_mod, "find_binary", lambda *_: None)
+    with pytest.raises(ServerError, match="not found"):
+        server_mod.llama_build_identity("/nope")
+
+
+def test_build_identity_probe_failure_raises(tmp_path, monkeypatch):
+    exe = tmp_path / "llama-server"
+    exe.write_bytes(b"binary")
+    monkeypatch.setattr(server_mod, "find_binary", lambda *_: exe)
+    monkeypatch.setattr(
+        server_mod.subprocess, "run",
+        lambda *a, **k: FakeCompleted(returncode=1, stderr="error: missing DLL"),
+    )
+    with pytest.raises(ServerError, match="--version"):
+        server_mod.llama_build_identity(str(tmp_path))
+
+
+def test_build_identity_endpoint_uses_props(monkeypatch):
+    class Resp:
+        def json(self):
+            return {"build_info": "b9587-d2e22ed97"}
+
+    monkeypatch.setattr(server_mod.httpx, "get", lambda *a, **k: Resp())
+    ident = server_mod.llama_build_identity("", endpoint="http://gpu-box:9000/")
+    assert ident == "b9587-d2e22ed97"
+
+
+def test_build_identity_endpoint_degrades_to_unknown(monkeypatch):
+    import httpx
+
+    def raise_conn(*a, **k):
+        raise httpx.ConnectError("refused")
+
+    monkeypatch.setattr(server_mod.httpx, "get", raise_conn)
+    # Endpoint mode can't probe a binary; degrade (with a warning), don't fail.
+    assert server_mod.llama_build_identity("", endpoint="http://gpu-box:9000") == "unknown"
+
+
+# --------------------------------------------------------------------------- #
 # mtmd-cli fallback arg construction (DESIGN §2.1, §2.2)
 # --------------------------------------------------------------------------- #
 

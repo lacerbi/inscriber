@@ -67,7 +67,9 @@ stitch/clean → split (main/appendix/backmatter) → optional BibTeX → write.
 - **Caching is content-addressed and load-bearing** (`inscriber/cache.py`):
   per-page OCR cache + shared VLM store (figure descriptions and restructured
   tables, disjoint key payloads). Keys include model+mmproj _content_ identities,
-  the fully assembled prompt, sampling, and `chat_template_kwargs`. **Anything
+  the llama.cpp **build identity** (`llama_build_identity` in `llama/server.py`
+  — `llama-server --version`, or the endpoint's `/props` `build_info`), the
+  fully assembled prompt, sampling, and `chat_template_kwargs`. **Anything
   that changes model output must become key material.** `--refresh` recomputes
   and overwrites; `--no-cache` neither reads nor writes. Never cache a failed
   result.

@@ -28,7 +28,9 @@ Given a PDF (local file, or a URL from a supported paper repository),
   Scholar, the one feature besides URL input that touches the network).
 
 Results are **cached** (content-addressed, per page / figure / table), so
-re-running with different output options takes seconds. A **two-step mode** runs
+re-running with different output options takes seconds. Cache keys cover the
+model files, prompts, and the llama.cpp build, so swapping or upgrading any of
+them recomputes instead of serving stale results. A **two-step mode** runs
 OCR once and lets you compare different VLMs on the identical OCR text and
 figure crops (see [Usage](#usage)).
 

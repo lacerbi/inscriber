@@ -12,13 +12,17 @@
 > `paper2llm`). It is written to be read entirely standalone — every concept,
 > dependency, and external quirk needed to build v1 is described here.
 >
-> **Last updated:** 2026-06-10 (§2.2/§22.2: DeepSeek-OCR-2 is now supported
-> upstream — llama.cpp PR #20975 — adoption gated on the TODO spike; research
-> in `dev/docs/upstream-watch.md`. Earlier same day: Gundam confirmed — no
-> tiling on build 9028, gundam ≡ `large`, frame render-size-invariant
-> (`dev/docs/gundam-findings.md`); BF16 loop observed in the wild
-> (`dev/docs/equation-fidelity-findings.md`); §9.2/§9.6 one-VLM-instance
-> consolidation; §9.7 nested-table guard)
+> **Last updated:** 2026-06-10 (§8.6/§9.6/§9.7: the llama.cpp **build identity**
+> is now OCR/VLM cache-key material — `llama-server --version`, or the
+> endpoint's `/props` `build_info` — so a llama.cpp upgrade busts the caches
+> instead of silently serving stale entries; the VLM cache value field was
+> renamed alongside (`VLM_VALUE_SCHEMA` 2). Earlier same day: §2.2/§22.2
+> DeepSeek-OCR-2 is now supported upstream — llama.cpp PR #20975 — adoption
+> gated on the TODO spike (research in `dev/docs/upstream-watch.md`); Gundam
+> confirmed — no tiling on build 9028, gundam ≡ `large`, frame
+> render-size-invariant (`dev/docs/gundam-findings.md`); BF16 loop observed in
+> the wild (`dev/docs/equation-fidelity-findings.md`); §9.2/§9.6
+> one-VLM-instance consolidation; §9.7 nested-table guard)
 
 ---
 
@@ -777,6 +781,7 @@ and a bundle without it simply skips table refinement with a warning.
     "backend": "deepseek-ocr",
     "model_identity": "...",
     "mmproj_identity": "...",
+    "server_identity": "version: 9587 (d2e22ed97)", // provenance; additive field
     "resolution": "large",
     "render_long_edge_px": 1280,
     "prompt": "<|grounding|>Convert the document to markdown.",
@@ -840,17 +845,29 @@ Notes:
 Per-page OCR is the expensive step; cache it.
 
 - **Key:** hash of `(pdf_content_hash, page_number, ocr_backend_name,
-model_identity, mmproj_identity, resolution_mode, render_long_edge_px, prompt,
-sampling_params)`. Each item matters:
+model_identity, mmproj_identity, server_build_identity, resolution_mode,
+render_long_edge_px, prompt, sampling_params)`. Each item matters:
   - `mmproj_identity` — the projector changes outputs too; hashing only the text
     model (an earlier draft's mistake) misses mmproj swaps.
+  - `server_build_identity` — the llama.cpp build serving inference: upstream
+    preprocessing/sampling changes (e.g. llama.cpp PR #23345, post-9028) change
+    model outputs with identical model/prompt/sampling, so a llama.cpp upgrade
+    must bust the cache rather than silently serve stale entries. Probed
+    **without launching a server** via `llama-server --version` (the
+    `version: …` line only; memoized per binary by path+size+mtime —
+    `llama_build_identity` in `llama/server.py`). With `--ocr-endpoint` /
+    `--vlm-endpoint` it reads the running server's `/props` `build_info`,
+    degrading to `"unknown"` with a warning if unavailable. Consequence: cache
+    keys now require the binary (or endpoint) to be reachable even for a
+    fully-cached document — the binary is required config anyway.
   - `render_long_edge_px` — a different rendered resolution = a different input
     image even at the same mode name.
   - `sampling_params` — temperature/seed/`max_tokens` (§2.2/§8.2).
-  - `*_identity` = file path + size + **content hash** (the hash itself cached by
-    path+size+mtime so it's computed once). Keying on bare `mtime` is fragile:
-    a re-download/copy that preserves content but changes mtime busts the cache
-    spuriously, and `touch` without change wouldn't. Hash the content.
+  - `*_identity` (model/mmproj) = file path + size + **content hash** (the hash
+    itself cached by path+size+mtime so it's computed once). Keying on bare
+    `mtime` is fragile: a re-download/copy that preserves content but changes
+    mtime busts the cache spuriously, and `touch` without change wouldn't. Hash
+    the content.
 - **Value:** the **pre-crop** `OcrPageResult` (JSON; markdown with placeholders +
   regions) **plus** raw model output (debugging) and a `value_schema` integer so
   a future backend's richer result can't collide with a v1 entry. **No crops are
@@ -1013,10 +1030,12 @@ Two precision notes for the implementer:
 ### 9.6 VLM caching
 
 Same scheme as §8.6, keyed on `(figure_crop_hash, vlm_backend_name,
-vlm_model_identity, vlm_mmproj_identity, full_assembled_prompt, sampling_params)`.
+vlm_model_identity, vlm_mmproj_identity, server_build_identity,
+full_assembled_prompt, sampling_params, chat_template_kwargs)`.
 The key uses the **fully assembled prompt — context text included** — not just a
 template name; otherwise changing `context_chars` or the page text would serve a
-stale description. The orchestrator assembles that prompt once and passes the
+stale description. `server_build_identity` is the same llama.cpp build probe as
+§8.6 (one `--version` subprocess per run, shared across both VLM passes). The orchestrator assembles that prompt once and passes the
 identical string into the backend call (§9.2), so key and request cannot drift.
 Lets you re-run the document (e.g. to re-split or re-fetch BibTeX) without
 re-describing figures.
@@ -1065,8 +1084,9 @@ context already sees clean tables):
   (along with the one backend instance and `VlmCache` both passes' keys are
   built from, §9.2).
 - **Caching** — per table, same store as §9.6, keyed on
-  `(page_image_hash, backend, model/mmproj identities, full assembled prompt,
-  sampling, chat_template_kwargs)` plus a `kind` discriminator.
+  `(page_image_hash, backend, model/mmproj/server-build identities, full
+  assembled prompt, sampling, chat_template_kwargs)` plus a `kind`
+  discriminator.
 - **Two-step** — `ocr` saves the verbatim page raster for table pages
   (`raster_path`, §8.5); `describe` reads it. Bundles without rasters skip with
   a warning.

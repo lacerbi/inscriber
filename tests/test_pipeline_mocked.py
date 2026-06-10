@@ -25,6 +25,8 @@ FIXTURES = Path(__file__).parent / "fixtures"
 def hermetic_cache(tmp_path, monkeypatch):
     monkeypatch.setattr(cache_mod, "default_cache_dir", lambda: tmp_path / "ocrcache")
     monkeypatch.setattr(cache_mod, "default_vlm_cache_dir", lambda: tmp_path / "vlmcache")
+    # Cache keys probe the llama.cpp build identity; no real binary in tests.
+    monkeypatch.setattr(pipeline, "llama_build_identity", lambda *a, **k: "version: 0 (test)")
 
 
 def _dummy_models(tmp_path) -> dict:

@@ -71,21 +71,12 @@ Legend: `[ ]` todo · `[!]` blocked.
 
 ## Code debts (2026-06-10 implementation review)
 
-- [ ] **llama.cpp build identity is not cache-key material** (DESIGN §8.6 keys
-      cover model/mmproj content, prompt, sampling — not the server build).
-      Upstream preprocessing changes (e.g. llama.cpp PR #23345, post-9028)
-      change model outputs without busting the cache → stale entries served
-      silently after an upgrade. Interim rule: `--refresh` after any llama.cpp
-      upgrade. Fix: fold a server/build identity (e.g. `llama-server --version`
-      output or binary content hash) into the OCR + VLM keys — bumps every
-      key once, so land it together with another cache-affecting change if
-      possible.
-
-- [ ] **`VlmCache` value field naming**: restructured tables are stored under a
-      JSON field literally named `"description"` — harmless (key payloads are
-      disjoint) but misleading. Fold the rename into the next
-      `VLM_VALUE_SCHEMA` bump made for a real reason; a standalone bump would
-      needlessly invalidate every user's cached descriptions/tables.
+- [x] ~~**llama.cpp build identity is not cache-key material**~~ — done
+      2026-06-10: `llama_build_identity` (`llama-server --version`, or the
+      endpoint's `/props` `build_info`) is now in the OCR + VLM keys
+      (DESIGN §8.6/§9.6). The `VlmCache` value-field rename
+      (`"description"` → `"text"`, `VLM_VALUE_SCHEMA` 2) rode the same
+      all-keys-bust, as planned.
 - [ ] **`<table>` inside a fenced code block** would be mis-spliced (blob
       detection doesn't see fences). Unobserved in DeepSeek output — handle if
       another OCR backend can emit fenced HTML. (The companion edge case, a

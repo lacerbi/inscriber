@@ -195,6 +195,7 @@ def test_table_key_never_collides_with_vlm_key():
         vlm_backend_name="gemma",
         vlm_model_identity="m",
         vlm_mmproj_identity="p",
+        server_identity="version: 9028 (abc1234)",
         full_assembled_prompt="prompt",
         sampling={"temperature": 0},
         chat_template_kwargs={"enable_thinking": True},
@@ -210,6 +211,7 @@ def test_thinking_kwarg_is_key_material():
         vlm_backend_name="gemma",
         vlm_model_identity="m",
         vlm_mmproj_identity="p",
+        server_identity="version: 9028 (abc1234)",
         full_assembled_prompt="prompt",
         sampling={"temperature": 0},
     )
@@ -229,6 +231,8 @@ RAW_TABLE_BLOCK = f"\n\ntable[[120, 870, 880, 960]]\n{BLOB}\n"
 def hermetic_cache(tmp_path, monkeypatch):
     monkeypatch.setattr(cache_mod, "default_cache_dir", lambda: tmp_path / "ocrcache")
     monkeypatch.setattr(cache_mod, "default_vlm_cache_dir", lambda: tmp_path / "vlmcache")
+    # Cache keys probe the llama.cpp build identity; no real binary in tests.
+    monkeypatch.setattr(pipeline, "llama_build_identity", lambda *a, **k: "version: 0 (test)")
 
 
 def _dummy_models(tmp_path) -> dict:

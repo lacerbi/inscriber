@@ -41,7 +41,8 @@ def test_serialize_roundtrip():
 def test_make_ocr_key_deterministic_and_sensitive():
     base = dict(
         pdf_hash="abc", page_number=1, backend_name="deepseek-ocr",
-        model_identity="m:1:h", mmproj_identity="mp:1:h", resolution_mode="large",
+        model_identity="m:1:h", mmproj_identity="mp:1:h",
+        server_identity="version: 9028 (abc1234)", resolution_mode="large",
         render_long_edge_px=1280, prompt="P", sampling={"temperature": 0, "seed": 0},
     )
     k1 = make_ocr_key(**base)
@@ -51,6 +52,9 @@ def test_make_ocr_key_deterministic_and_sensitive():
     assert make_ocr_key(**{**base, "mmproj_identity": "mp:2:other"}) != k1
     assert make_ocr_key(**{**base, "render_long_edge_px": 640}) != k1
     assert make_ocr_key(**{**base, "sampling": {"temperature": 0, "seed": 7}}) != k1
+    # llama.cpp build identity is key material (DESIGN §8.6 — upstream preprocessing
+    # changes alter outputs at identical model/prompt/sampling):
+    assert make_ocr_key(**{**base, "server_identity": "version: 9587 (d2e22ed)"}) != k1
 
 
 def test_make_vlm_key_includes_thinking_kwargs():
@@ -61,12 +65,17 @@ def test_make_vlm_key_includes_thinking_kwargs():
         vlm_backend_name="gemma",
         vlm_model_identity="m:1:h",
         vlm_mmproj_identity="mp:1:h",
+        server_identity="version: 9028 (abc1234)",
         full_assembled_prompt="prompt",
         sampling={"temperature": 0, "seed": 0},
     )
     k1 = make_vlm_key(**base, chat_template_kwargs={"enable_thinking": True})
     assert k1 == make_vlm_key(**base, chat_template_kwargs={"enable_thinking": True})
     assert make_vlm_key(**base, chat_template_kwargs=None) != k1
+    assert make_vlm_key(
+        **{**base, "server_identity": "version: 9587 (d2e22ed)"},
+        chat_template_kwargs={"enable_thinking": True},
+    ) != k1
 
 
 def test_cache_put_get_roundtrip(tmp_path):
