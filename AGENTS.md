@@ -44,8 +44,11 @@ upstream; DESIGN §2.2, `dev/notes/2026-06-10-build-9587-verification.md`).
   debts, blocked refinements) — add to it rather than burying TODOs in spec
   prose; longer-horizon future work stays in DESIGN §22.
 - `dev/` is developer-only material (never user-facing): scripts, the dated
-  lab notes above, and `dev/plans/` — executed feature plans and build
-  roadmaps, archived as design records.
+  lab notes above, `dev/plans/` — executed feature plans and build roadmaps,
+  archived as design records — and `dev/benchmarks/` — verified gold
+  transcriptions of real papers plus the error inventory of the run that
+  produced them, for comparing OCR/VLM approaches (see each folder's README;
+  source PDFs are gitignored, fetch them from the recorded URL).
 
 ## Architecture
 

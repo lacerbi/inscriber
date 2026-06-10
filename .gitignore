@@ -19,6 +19,7 @@ venv/
 
 # inscriber runtime/test artifacts
 config.toml
+dev/benchmarks/**/*.pdf
 *.inscriber-ocr/
 /out*/
 /out*.log
