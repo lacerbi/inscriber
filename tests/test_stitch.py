@@ -109,3 +109,16 @@ def test_strip_running_headers_uses_ceiling_threshold():
 def test_strip_skips_short_docs():
     pages = ["Header\n\nbody one", "Header\n\nbody two"]  # only 2 pages < min_pages
     assert strip_running_headers_footers(pages) == pages
+
+
+def test_pipe_table_rows_never_stripped_as_chrome():
+    # Pages ending in a pipe table: the digit-normalized last rows recur
+    # (`| # | # |`) and would be stripped as a running footer, silently losing
+    # table data — but table rows are protected artifact lines (never chrome).
+    intros = ["Alpha intro.", "Beta methods.", "Gamma results.", "Delta discussion."]
+    pages = [
+        f"{intro}\n\n| A | B |\n| --- | --- |\n| {i} | {i * 2} |"
+        for i, intro in enumerate(intros, 1)
+    ]
+    out = strip_running_headers_footers(pages)
+    assert out == pages

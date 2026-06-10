@@ -53,7 +53,9 @@ def test_make_ocr_key_deterministic_and_sensitive():
     assert make_ocr_key(**{**base, "sampling": {"temperature": 0, "seed": 7}}) != k1
 
 
-def test_make_vlm_key_includes_max_tokens():
+def test_make_vlm_key_includes_thinking_kwargs():
+    # max_tokens is no longer key material (no VLM cap is sent; ctx_size is the
+    # single size knob) — but chat_template_kwargs changes outputs, so it is.
     base = dict(
         figure_crop_hash="crop",
         vlm_backend_name="gemma",
@@ -62,7 +64,9 @@ def test_make_vlm_key_includes_max_tokens():
         full_assembled_prompt="prompt",
         sampling={"temperature": 0, "seed": 0},
     )
-    assert make_vlm_key(**base, max_tokens=1536) != make_vlm_key(**base, max_tokens=4096)
+    k1 = make_vlm_key(**base, chat_template_kwargs={"enable_thinking": True})
+    assert k1 == make_vlm_key(**base, chat_template_kwargs={"enable_thinking": True})
+    assert make_vlm_key(**base, chat_template_kwargs=None) != k1
 
 
 def test_cache_put_get_roundtrip(tmp_path):

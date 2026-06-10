@@ -33,23 +33,36 @@ class ChatClient:
         self.base_url = base_url.rstrip("/")
         self.default_timeout = default_timeout
         self.last_completion_tokens: int | None = None
+        self.last_finish_reason: str | None = None
 
     def chat(
         self,
         messages: list[dict],
         *,
-        max_tokens: int,
+        max_tokens: int | None = None,
         sampling: dict | None = None,
         timeout_s: float | None = None,
+        chat_template_kwargs: dict | None = None,
     ) -> str:
-        """Send a chat request, return ``choices[0].message.content`` (a string)."""
+        """Send a chat request, return ``choices[0].message.content`` (a string).
+
+        ``max_tokens=None`` omits the field — llama-server then generates until
+        EOS or the context window fills (``ctx_size`` is the single size knob);
+        either cap yields ``finish_reason: "length"``. ``chat_template_kwargs``
+        are forwarded to llama-server's jinja chat-template rendering (e.g.
+        ``{"enable_thinking": true}`` for Gemma 4 thinking).
+        """
         self.last_completion_tokens = None
+        self.last_finish_reason = None
         body: dict = {
             "model": "local",
             "messages": messages,
-            "max_tokens": max_tokens,
             "stream": False,
         }
+        if max_tokens is not None:
+            body["max_tokens"] = max_tokens
+        if chat_template_kwargs:
+            body["chat_template_kwargs"] = chat_template_kwargs
         # sampling carries temperature / seed / etc. (DESIGN §8.2). Defaults to
         # deterministic temperature 0 when unspecified.
         body["temperature"] = 0
@@ -70,9 +83,13 @@ class ChatClient:
             )
         try:
             data = resp.json()
-            content = data["choices"][0]["message"]["content"]
+            choice = data["choices"][0]
+            content = choice["message"]["content"]
         except (KeyError, IndexError, ValueError) as e:
             raise ChatError(f"malformed chat response from {url}: {e}") from e
+        finish_reason = choice.get("finish_reason") if isinstance(choice, dict) else None
+        if isinstance(finish_reason, str):
+            self.last_finish_reason = finish_reason
         usage = data.get("usage") if isinstance(data, dict) else None
         completion_tokens = (
             usage.get("completion_tokens") if isinstance(usage, dict) else None
@@ -86,10 +103,11 @@ class ChatClient:
         *,
         image_png: bytes,
         prompt: str,
-        max_tokens: int,
+        max_tokens: int | None = None,
         sampling: dict | None = None,
         timeout_s: float | None = None,
         image_first: bool = True,
+        chat_template_kwargs: dict | None = None,
     ) -> str:
         """One image + text-prompt turn → assistant text.
 
@@ -109,5 +127,9 @@ class ChatClient:
         content = [image_part, text_part] if image_first else [text_part, image_part]
         messages = [{"role": "user", "content": content}]
         return self.chat(
-            messages, max_tokens=max_tokens, sampling=sampling, timeout_s=timeout_s
+            messages,
+            max_tokens=max_tokens,
+            sampling=sampling,
+            timeout_s=timeout_s,
+            chat_template_kwargs=chat_template_kwargs,
         )

@@ -135,7 +135,10 @@ class LlamaConfig:
     host: str = "127.0.0.1"
     port: int = 0  # 0 = auto-select a free port
     server_start_timeout: int = 120
-    ctx_size: int = 8192
+    # The single size knob: prompt + generation share this window. 16384 leaves
+    # room for the table pass (~2-4k prompt tokens of page image + page text +
+    # OCR blob, plus ~6-8k of VLM thinking + answer).
+    ctx_size: int = 16384
 
 
 @dataclass
@@ -171,6 +174,18 @@ class FigureConfig:
     mode: str = "describe-only"  # describe-only | describe-and-keep | placeholder
     crop_padding: float = 0.02  # fraction of page dims (ocr-stage)
     context_chars: int = 2000  # whole-page context truncation cap (describe-stage)
+
+
+@dataclass
+class TableConfig:
+    """VLM table restructuring (describe-stage; dev/docs/table-reconstruction-findings.md).
+
+    Independent of figure settings: ``--no-figures`` does not disable it. There is
+    no per-table token budget — generation is bounded by ``llama.ctx_size`` (the
+    single size knob); complex tables need ~6-8k tokens of thinking + answer.
+    """
+
+    refine: bool = True  # restructure DeepSeek <table> blobs via the VLM
 
 
 @dataclass
@@ -227,6 +242,7 @@ class RunConfig:
     ocr: OcrConfig = field(default_factory=OcrConfig)
     vlm: VlmConfig = field(default_factory=VlmConfig)
     figure: FigureConfig = field(default_factory=FigureConfig)
+    table: TableConfig = field(default_factory=TableConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
     cache: CacheConfig = field(default_factory=CacheConfig)
     workdir: WorkdirConfig = field(default_factory=WorkdirConfig)

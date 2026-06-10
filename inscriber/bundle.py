@@ -7,10 +7,16 @@ stages later with **no OCR model required**::
     OUT/paper.inscriber-ocr/
     ├── manifest.json     # source meta + OCR config + per-page results
     ├── figures/          # cropped figure PNGs (fig_p{page}_{i}.png)
-    └── pages/            # optional page rasters (--keep-intermediates)
+    └── pages/            # page rasters for pages with tables (page_NNNN.png)
 
 The bundle is a superset of the OCR cache value: per page it adds the post-crop
 ``figures[]`` and the cropped PNGs (cache = step-3 boundary; bundle = step-4).
+
+Pages containing ``<table>`` blobs also carry their **verbatim** page raster
+(``raster_path``) so ``describe`` can run the VLM table-restructuring pass with
+no PDF present; verbatim bytes keep table cache keys identical between ``run``
+and ``describe``. The field is additive — old readers ignore it, so
+``bundle_schema`` stays 1; old bundles without it skip table refinement.
 """
 
 from __future__ import annotations
@@ -43,6 +49,7 @@ class BundlePage:
     markdown: str
     regions: list[Region] = field(default_factory=list)
     figures: list[Figure] = field(default_factory=list)
+    raster_path: str | None = None  # relative page-raster path (table pages only)
 
 
 @dataclass
@@ -71,9 +78,11 @@ def write_bundle(
     figure_detect: str,
     page_results: list[OcrPageResult],
     page_figures: dict[int, list[Figure]],
+    page_rasters: dict[int, str] | None = None,
     created_at: str = "",
 ) -> Path:
-    """Write ``manifest.json`` (crops are expected already saved under ``figures/``).
+    """Write ``manifest.json`` (crops are expected already saved under ``figures/``;
+    likewise ``page_rasters`` maps page numbers to already-saved raster paths).
 
     Returns the bundle directory.
     """
@@ -83,12 +92,14 @@ def write_bundle(
     pages_json = []
     for res in page_results:
         figs = page_figures.get(res.page_number, [])
-        pages_json.append(
-            {
-                **ocr_page_result_to_dict(res),
-                "figures": [figure_to_dict(f) for f in figs],
-            }
-        )
+        page_json = {
+            **ocr_page_result_to_dict(res),
+            "figures": [figure_to_dict(f) for f in figs],
+        }
+        raster = (page_rasters or {}).get(res.page_number)
+        if raster:
+            page_json["raster_path"] = raster
+        pages_json.append(page_json)
 
     manifest = {
         "bundle_schema": BUNDLE_SCHEMA,
@@ -138,12 +149,16 @@ def read_bundle(bundle_dir: str | Path) -> Bundle:
         for f in figures:
             if f.crop_path and not (bundle_dir / f.crop_path).is_file():
                 raise BundleError(f"bundle missing referenced crop: {f.crop_path}")
+        raster_path = p.get("raster_path")
+        if raster_path and not (bundle_dir / raster_path).is_file():
+            raise BundleError(f"bundle missing referenced page raster: {raster_path}")
         pages.append(
             BundlePage(
                 page_number=p["page_number"],
                 markdown=p["markdown"],
                 regions=regions,
                 figures=figures,
+                raster_path=raster_path,
             )
         )
 

@@ -46,8 +46,8 @@ def _mock_inference(monkeypatch):
 
     raw = (FIXTURES / "deepseek_paper_p1_raw.txt").read_text(encoding="utf-8")
 
-    def fake_chat_image(self, *, image_png, prompt, max_tokens, sampling=None,
-                        timeout_s=None, image_first=True):
+    def fake_chat_image(self, *, image_png, prompt, max_tokens=None, sampling=None,
+                        timeout_s=None, image_first=True, chat_template_kwargs=None):
         # Discriminate on the OCR grounding TOKEN (the page text itself mentions the
         # word "grounding", so a substring check on "grounding" would misfire).
         if "<|grounding|>" in prompt:  # OCR grounding call

@@ -177,12 +177,15 @@ def make_vlm_key(
     vlm_mmproj_identity: str,
     full_assembled_prompt: str,
     sampling: dict,
-    max_tokens: int,
+    chat_template_kwargs: dict | None = None,
 ) -> str:
     """VLM cache key (DESIGN §9.6).
 
     Keyed on the **fully assembled prompt — context text included** — so changing
     ``context_chars`` or the page text doesn't serve a stale description.
+    ``chat_template_kwargs`` (e.g. Gemma thinking activation) changes outputs, so
+    it is key material too. (No ``max_tokens``: generation is bounded only by
+    ``ctx_size``, which doesn't change a non-truncated output.)
     """
     payload = json.dumps(
         {
@@ -192,7 +195,41 @@ def make_vlm_key(
             "mmproj": vlm_mmproj_identity,
             "prompt": full_assembled_prompt,
             "sampling": sampling,
-            "max_tokens": max_tokens,
+            "chat_template_kwargs": chat_template_kwargs,
+        },
+        sort_keys=True,
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def make_table_key(
+    *,
+    page_image_hash: str,
+    vlm_backend_name: str,
+    vlm_model_identity: str,
+    vlm_mmproj_identity: str,
+    full_assembled_prompt: str,
+    sampling: dict,
+    chat_template_kwargs: dict | None = None,
+) -> str:
+    """Cache key for one table restructure.
+
+    Same scheme as :func:`make_vlm_key` but content-addressed on the **whole page
+    image** (the table pass sends the full page, not a crop) and the assembled
+    table prompt (locator + page text + OCR blob included). The ``kind`` field
+    keeps table entries from ever colliding with figure-description entries in
+    the shared store.
+    """
+    payload = json.dumps(
+        {
+            "kind": "table-restructure",
+            "page_image": page_image_hash,
+            "backend": vlm_backend_name,
+            "model": vlm_model_identity,
+            "mmproj": vlm_mmproj_identity,
+            "prompt": full_assembled_prompt,
+            "sampling": sampling,
+            "chat_template_kwargs": chat_template_kwargs,
         },
         sort_keys=True,
     )
@@ -200,10 +237,13 @@ def make_vlm_key(
 
 
 class VlmCache:
-    """Per-figure cache of generated descriptions (DESIGN §9.6).
+    """Per-item cache of VLM text outputs (DESIGN §9.6).
 
+    Stores figure descriptions (:func:`make_vlm_key`) and restructured tables
+    (:func:`make_table_key`) — the key payloads are disjoint by construction.
     Lets a document be re-run (re-split, re-fetch BibTeX) without re-describing
-    figures. Same ``enabled``/``refresh`` semantics as :class:`OcrCache`.
+    figures or re-restructuring tables. Same ``enabled``/``refresh`` semantics
+    as :class:`OcrCache`.
     """
 
     def __init__(

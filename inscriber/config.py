@@ -34,6 +34,7 @@ from inscriber.models import (
     OutputConfig,
     ResolutionMode,
     RunConfig,
+    TableConfig,
     VlmConfig,
     WorkdirConfig,
 )
@@ -60,6 +61,7 @@ _SECTIONS: dict[str, type] = {
     "ocr": OcrConfig,
     "vlm": VlmConfig,
     "figure": FigureConfig,
+    "table": TableConfig,
     "output": OutputConfig,
     "cache": CacheConfig,
     "workdir": WorkdirConfig,
@@ -246,6 +248,8 @@ def validate_structural(cfg: RunConfig) -> None:
         errors.append(
             f"figure.context_chars must be >= 0 (got {cfg.figure.context_chars})"
         )
+    if not isinstance(cfg.table.refine, bool):
+        errors.append(f"table.refine must be a boolean (got {cfg.table.refine!r})")
 
     if errors:
         raise ConfigError("Invalid configuration:\n  - " + "\n  - ".join(errors))

@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import shutil
 import tempfile
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -30,6 +30,7 @@ from inscriber.cache import (
     VlmCache,
     file_identity,
     make_ocr_key,
+    make_table_key,
     make_vlm_key,
     sha256_bytes,
 )
@@ -77,6 +78,13 @@ from inscriber.postprocess.stitch import (
     stitch_pages,
     strip_running_headers_footers,
 )
+from inscriber.postprocess.tables import (
+    blob_is_refinable,
+    find_table_blobs,
+    sanitize_table_output,
+    splice_tables,
+    table_page_context,
+)
 from inscriber.vlm.registry import get_vlm_backend
 
 logger = get_logger()
@@ -95,6 +103,7 @@ class _Page:
     markdown: str  # with figure placeholders ensured
     page_text: str  # placeholders stripped, for figure context
     figures: list[Figure] = field(default_factory=list)
+    raster_png: bytes | None = None  # verbatim page render (table restructuring input)
 
 
 @contextmanager
@@ -277,6 +286,175 @@ def _crop_pages(
     return out
 
 
+def _vlm_configured(cfg: RunConfig) -> bool:
+    """Whether any VLM is set up at all (endpoint or a model/mmproj pair)."""
+    return bool(cfg.vlm.endpoint or (cfg.vlm.model and cfg.vlm.mmproj))
+
+
+class _VlmSession:
+    """Lazily-launched VLM server shared by the table and figure passes.
+
+    Nothing is launched until the first :meth:`backend` call, so a fully-cached
+    (or empty) pass never starts a server; both passes reuse one server when
+    either has a miss. ``close()`` tears it down.
+    """
+
+    def __init__(
+        self, cfg: RunConfig, work_dir: str | Path, endpoint_override: str | None = None
+    ) -> None:
+        self.cfg = cfg
+        self.work_dir = work_dir
+        self.endpoint = endpoint_override or cfg.vlm.endpoint
+        self._stack: ExitStack | None = None
+        self._backend = None
+
+    def backend(self):
+        """The client-connected VLM backend, launching the server on first use."""
+        if self._backend is not None:
+            return self._backend
+        cfg = self.cfg
+        if not self.endpoint and find_binary(cfg.llama.bin_dir, "llama-server") is None:
+            raise ConfigError(
+                "llama-server binary not found "
+                f"(llama.bin_dir={cfg.llama.bin_dir!r}; not on PATH either)"
+            )
+        proto = get_vlm_backend(cfg.vlm.backend)
+        mgr = LlamaServerManager(
+            cfg.llama.bin_dir,
+            server_start_timeout=cfg.llama.server_start_timeout,
+            log_dir=self.work_dir,
+        )
+        spec = ServerSpec(
+            model=cfg.vlm.model,
+            mmproj=cfg.vlm.mmproj,
+            host=cfg.llama.host,
+            port=cfg.llama.port,
+            ctx_size=cfg.llama.ctx_size,
+            n_gpu_layers=cfg.vlm.n_gpu_layers,
+            extra_flags=proto.server_flags(),
+            chat_template=None,
+            label="vlm",
+        )
+        stack = ExitStack()
+        try:
+            url = stack.enter_context(endpoint_or_serve(mgr, self.endpoint, spec))
+        except BaseException:
+            stack.close()
+            raise
+        self._stack = stack
+        self._backend = get_vlm_backend(cfg.vlm.backend, client=ChatClient(url))
+        return self._backend
+
+    def close(self) -> None:
+        if self._stack is not None:
+            self._stack.close()
+            self._stack = None
+            self._backend = None
+
+
+def _refine_tables(cfg: RunConfig, pages: list[_Page], session: _VlmSession) -> int:
+    """Restructure DeepSeek ``<table>`` blobs via the VLM, before figure description
+    (dev/docs/table-reconstruction-findings.md).
+
+    Cache-first; the shared ``session`` launches the VLM server only on a miss.
+    Any per-table failure (error, truncation, unusable output) keeps the original
+    OCR blob — it still holds every value. Updates ``pg.markdown``/``pg.page_text``
+    in place (so figure context sees clean tables) and returns the number of
+    tables restructured.
+    """
+    if not cfg.table.refine:
+        return 0
+
+    # (page, page-context, blob-count-on-page, [(index, start, end, blob), ...])
+    work: list[tuple[_Page, str, int, list[tuple[int, int, int, str]]]] = []
+    for pg in pages:
+        spans = find_table_blobs(pg.markdown)
+        if not spans:
+            continue
+        if pg.raster_png is None:
+            logger.warning(
+                "page %d has %d table(s) but no page raster (pre-table-pass bundle?); "
+                "keeping raw OCR tables",
+                pg.page_number, len(spans),
+            )
+            continue
+        entries = [
+            (i, start, end, blob)
+            for i, (start, end, blob) in enumerate(spans, 1)
+            if blob_is_refinable(blob)
+        ]
+        if entries:
+            # Context computed once per page against the pre-splice markdown (all
+            # blobs + placeholders stripped), exactly as in the validated prompt.
+            work.append((pg, table_page_context(pg.markdown), len(spans), entries))
+    if not work:
+        return 0
+    if not _vlm_configured(cfg):
+        logger.warning(
+            "table refinement skipped: no VLM configured (set [vlm] model/mmproj or "
+            "--vlm-endpoint, or pass --no-table-refine to silence this)"
+        )
+        return 0
+
+    proto = get_vlm_backend(cfg.vlm.backend)  # client=None — used for prompts/keys
+    vlm_cache = VlmCache(enabled=cfg.cache.enabled, refresh=cfg.cache.refresh)
+    model_id, mmproj_id = _vlm_identities(cfg, vlm_cache)
+
+    total = sum(len(entries) for _, _, _, entries in work)
+    done = 0
+    refined = 0
+    for pg, context, blob_count, entries in work:
+        replacements: list[tuple[int, int, str]] = []
+        for index, start, end, blob in entries:
+            done += 1
+            prompt = proto.build_table_prompt(
+                blob, context, table_index=index, table_count=blob_count
+            )
+            key = make_table_key(
+                page_image_hash=sha256_bytes(pg.raster_png),
+                vlm_backend_name=proto.name,
+                vlm_model_identity=model_id,
+                vlm_mmproj_identity=mmproj_id,
+                full_assembled_prompt=prompt,
+                sampling=proto.sampling(),
+                chat_template_kwargs=proto.chat_template_kwargs(),
+            )
+            cached = vlm_cache.get(key)
+            if cached is not None:
+                logger.info("table %d/%d (page %d): cache hit", done, total, pg.page_number)
+                replacements.append((start, end, cached))
+                refined += 1
+                continue
+            logger.info("refining table %d/%d (page %d)…", done, total, pg.page_number)
+            try:
+                raw = session.backend().restructure_table(
+                    pg.raster_png, blob, context,
+                    table_index=index, table_count=blob_count,
+                )
+            except ConfigError:
+                raise  # missing binary is a setup error, not a per-table failure
+            except Exception as e:  # noqa: BLE001 - resilience (DESIGN §16)
+                logger.warning(
+                    "table %d/%d (page %d) restructure failed: %s; keeping raw OCR table",
+                    done, total, pg.page_number, e,
+                )
+                continue
+            table_md = sanitize_table_output(raw)
+            if table_md is None:
+                logger.warning(
+                    "table %d/%d (page %d): truncated/unusable output; keeping raw OCR table",
+                    done, total, pg.page_number,
+                )
+                continue
+            vlm_cache.put(key, table_md)
+            replacements.append((start, end, table_md))
+            refined += 1
+        if replacements:
+            pg.markdown = splice_tables(pg.markdown, replacements)
+            pg.page_text = PLACEHOLDER_RE.sub("", pg.markdown).strip()
+    return refined
+
+
 def _vlm_identities(cfg: RunConfig, vlm_cache: VlmCache) -> tuple[str, str]:
     if cfg.vlm.endpoint:
         ep = cfg.vlm.endpoint
@@ -295,15 +473,10 @@ def _vlm_describe(
     cfg: RunConfig,
     pages: list[_Page],
     crop_base: Path,
-    work_dir: Path,
-    *,
-    vlm_endpoint: str | None = None,
+    session: _VlmSession,
 ) -> dict[str, str]:
-    """Describe every figure (DESIGN §9). Cache-first; launch VLM server only on miss.
-
-    ``vlm_endpoint`` (concurrent mode) points at an already-running VLM server so no
-    second server is launched.
-    """
+    """Describe every figure (DESIGN §9). Cache-first; the shared ``session``
+    launches the VLM server only on a miss (and reuses the table pass's server)."""
     tasks: list[tuple[Figure, str, bytes]] = []
     for pg in pages:
         context = build_page_context(pg.page_number, pg.page_text, cfg.figure.context_chars)
@@ -331,7 +504,7 @@ def _vlm_describe(
             vlm_mmproj_identity=mmproj_id,
             full_assembled_prompt=prompt,
             sampling=proto.sampling(),
-            max_tokens=proto.max_tokens(),
+            chat_template_kwargs=proto.chat_template_kwargs(),
         )
         keys[fig.id] = key
         cached = vlm_cache.get(key)
@@ -342,40 +515,17 @@ def _vlm_describe(
             todo.append((fig, context, crop_bytes))
 
     if todo:
-        endpoint = vlm_endpoint or cfg.vlm.endpoint
-        if not endpoint and find_binary(cfg.llama.bin_dir, "llama-server") is None:
-            raise ConfigError(
-                "llama-server binary not found "
-                f"(llama.bin_dir={cfg.llama.bin_dir!r}; not on PATH either)"
-            )
-        mgr = LlamaServerManager(
-            cfg.llama.bin_dir,
-            server_start_timeout=cfg.llama.server_start_timeout,
-            log_dir=work_dir,
-        )
-        spec = ServerSpec(
-            model=cfg.vlm.model,
-            mmproj=cfg.vlm.mmproj,
-            host=cfg.llama.host,
-            port=cfg.llama.port,
-            ctx_size=cfg.llama.ctx_size,
-            n_gpu_layers=cfg.vlm.n_gpu_layers,
-            extra_flags=proto.server_flags(),
-            chat_template=None,
-            label="vlm",
-        )
-        with endpoint_or_serve(mgr, endpoint, spec) as url:
-            backend = get_vlm_backend(cfg.vlm.backend, client=ChatClient(url))
-            for i, (fig, context, crop_bytes) in enumerate(todo, 1):
-                logger.info("describing figure %d/%d (%s)…", i, len(todo), fig.id)
-                try:
-                    desc = backend.describe(crop_bytes, context)
-                except Exception as e:  # noqa: BLE001 - resilience (DESIGN §16)
-                    logger.warning("figure %s description failed: %s", fig.id, e)
-                    desc = ""  # injection → [figure description unavailable]
-                if desc:
-                    vlm_cache.put(keys[fig.id], desc)
-                descriptions[fig.id] = desc
+        backend = session.backend()
+        for i, (fig, context, crop_bytes) in enumerate(todo, 1):
+            logger.info("describing figure %d/%d (%s)…", i, len(todo), fig.id)
+            try:
+                desc = backend.describe(crop_bytes, context)
+            except Exception as e:  # noqa: BLE001 - resilience (DESIGN §16)
+                logger.warning("figure %s description failed: %s", fig.id, e)
+                desc = ""  # injection → [figure description unavailable]
+            if desc:
+                vlm_cache.put(keys[fig.id], desc)
+            descriptions[fig.id] = desc
     return descriptions
 
 
@@ -431,16 +581,23 @@ def _bibtex_outputs(
 
 
 def _write_documents(
-    cfg: RunConfig, base: str, full_md: str, out_dir: Path, *, bibtex_block: str | None = None
+    cfg: RunConfig,
+    base: str,
+    full_md: str,
+    out_dir: Path,
+    *,
+    bibtex_block: str | None = None,
+    vlm_tables: bool = False,
 ) -> list[str]:
     """Write the full doc (always) + main/appendix/backmatter when split (DESIGN §14).
 
     When ``bibtex_block`` is given (``--bibtex-in-doc``), it is prepended to the
     full document and the main split (DESIGN §12 — full/main/allparts only).
+    ``vlm_tables`` notes VLM-restructured tables in the transcription notice.
     """
     full_out = (bibtex_block + full_md) if bibtex_block else full_md
     if cfg.output.notice:
-        full_out = append_transcription_notice(full_out)
+        full_out = append_transcription_notice(full_out, vlm_tables=vlm_tables)
     written: list[Path] = [write_full_document(out_dir, base, full_out, clobber=cfg.output.clobber)]
     if cfg.output.split:
         sections = split_markdown_content(full_md)  # split the clean doc, not the prepended one
@@ -448,11 +605,11 @@ def _write_documents(
         if bibtex_block:
             main = bibtex_block + main
         if cfg.output.notice:
-            main = append_transcription_notice(main)
+            main = append_transcription_notice(main, vlm_tables=vlm_tables)
             if appendix is not None:
-                appendix = append_transcription_notice(appendix)
+                appendix = append_transcription_notice(appendix, vlm_tables=vlm_tables)
             if backmatter is not None:
-                backmatter = append_transcription_notice(backmatter)
+                backmatter = append_transcription_notice(backmatter, vlm_tables=vlm_tables)
         written += write_split_documents(
             out_dir, base, main=main, appendix=appendix, backmatter=backmatter,
             clobber=cfg.output.clobber,
@@ -497,6 +654,19 @@ def run_ocr(cfg: RunConfig) -> list[str]:
             for p, r in zip(working, results, strict=True)
         ]
         page_figures = {p.page_number: p.figures for p in working}
+        # Pages with restructurable <table> blobs carry their page raster so a
+        # later `describe` can run the VLM table pass with no PDF present. The
+        # bytes are written VERBATIM — run and describe then share table cache keys.
+        page_rasters: dict[int, str] = {}
+        for pg, p in zip(pages, working, strict=True):
+            spans = find_table_blobs(p.markdown)
+            if not any(blob_is_refinable(blob) for _, _, blob in spans):
+                continue
+            rel = f"pages/page_{pg.page_number:04d}.png"
+            target = bdir / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(pg.png_bytes)
+            page_rasters[pg.page_number] = rel
         source = {
             "source": resolved.source,
             "original_url": resolved.original_url,
@@ -510,6 +680,7 @@ def run_ocr(cfg: RunConfig) -> list[str]:
             figure_detect=cfg.figure.detect,
             page_results=page_results,
             page_figures=page_figures,
+            page_rasters=page_rasters,
             created_at=_now(),
         )
     logger.info("wrote OCR bundle: %s", bdir)
@@ -527,17 +698,27 @@ def describe(cfg: RunConfig) -> list[str]:
             markdown=p.markdown,
             page_text=PLACEHOLDER_RE.sub("", p.markdown).strip(),
             figures=p.figures,
+            raster_png=(bundle.dir / p.raster_path).read_bytes() if p.raster_path else None,
         )
         for p in bundle.pages
     ]
+    figures_need_vlm = cfg.figure.detect != "none" and cfg.figure.mode != "placeholder"
 
     with _workdir(cfg) as work:
         descriptions: dict[str, str] = {}
-        if cfg.figure.detect != "none" and cfg.figure.mode != "placeholder":
-            descriptions = _vlm_describe(cfg, pages, bundle.dir, work)
+        session = _VlmSession(cfg, work)
+        try:
+            tables_refined = _refine_tables(cfg, pages, session)
+            if figures_need_vlm:
+                descriptions = _vlm_describe(cfg, pages, bundle.dir, session)
+        finally:
+            session.close()
         full_md = _assemble(cfg, pages, descriptions)
         bibtex_block, bib_written = _bibtex_outputs(cfg, full_md, out_dir, base)
-        written = _write_documents(cfg, base, full_md, out_dir, bibtex_block=bibtex_block)
+        written = _write_documents(
+            cfg, base, full_md, out_dir,
+            bibtex_block=bibtex_block, vlm_tables=tables_refined > 0,
+        )
         written += bib_written
         if cfg.figure.mode == "describe-and-keep" and cfg.figure.detect != "none":
             all_figs = [f for pg in pages for f in pg.figures]
@@ -548,18 +729,28 @@ def describe(cfg: RunConfig) -> list[str]:
 
 def _run_body(cfg: RunConfig, resolved, base, out_dir, work, *, vlm_endpoint=None) -> list[str]:
     backend = _build_ocr_backend(cfg)
-    needs_vlm = cfg.figure.detect != "none" and cfg.figure.mode != "placeholder"
+    figures_need_vlm = cfg.figure.detect != "none" and cfg.figure.mode != "placeholder"
 
     pages, results = run_ocr_pass(cfg, resolved, work)
     figures_dir = Path(work) / "figures"
     working = _crop_pages(cfg, backend, resolved.pdf_bytes, pages, results, figures_dir)
+    for w, pg in zip(working, pages, strict=True):
+        w.raster_png = pg.png_bytes  # table restructuring input (verbatim render)
 
     descriptions: dict[str, str] = {}
-    if needs_vlm:
-        descriptions = _vlm_describe(cfg, working, work, work, vlm_endpoint=vlm_endpoint)
+    session = _VlmSession(cfg, work, endpoint_override=vlm_endpoint)
+    try:
+        tables_refined = _refine_tables(cfg, working, session)
+        if figures_need_vlm:
+            descriptions = _vlm_describe(cfg, working, work, session)
+    finally:
+        session.close()
     full_md = _assemble(cfg, working, descriptions)
     bibtex_block, bib_written = _bibtex_outputs(cfg, full_md, out_dir, base)
-    written = _write_documents(cfg, base, full_md, out_dir, bibtex_block=bibtex_block)
+    written = _write_documents(
+        cfg, base, full_md, out_dir,
+        bibtex_block=bibtex_block, vlm_tables=tables_refined > 0,
+    )
     written += bib_written
     if cfg.figure.mode == "describe-and-keep" and cfg.figure.detect != "none":
         all_figs = [f for pg in working for f in pg.figures]
@@ -578,7 +769,11 @@ def run(cfg: RunConfig) -> list[str]:
     resolved = resolve_input(cfg.input, offline=cfg.net.offline)
     base = sanitize_base_name(resolved.suggested_name)
     out_dir = Path(cfg.output.dir)
-    needs_vlm = cfg.figure.detect != "none" and cfg.figure.mode != "placeholder"
+    # Tables may use the VLM too, but only pre-launch for them when a VLM is
+    # actually configured (table.refine degrades gracefully without one).
+    needs_vlm = (cfg.figure.detect != "none" and cfg.figure.mode != "placeholder") or (
+        cfg.table.refine and _vlm_configured(cfg)
+    )
 
     with _workdir(cfg) as work:
         if cfg.inference.mode == "concurrent" and needs_vlm and not cfg.vlm.endpoint:

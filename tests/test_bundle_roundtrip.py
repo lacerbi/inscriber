@@ -72,7 +72,7 @@ def test_ocr_then_describe_roundtrip(tmp_path, monkeypatch, hermetic_cache, fixt
     # describe with a mocked VLM pass.
     monkeypatch.setattr(
         pipeline, "_vlm_describe",
-        lambda cfg, pages, crop_base, work: {"fig_p1_1": "A line chart trending upward."},
+        lambda cfg, pages, crop_base, session: {"fig_p1_1": "A line chart trending upward."},
     )
     dcfg = RunConfig(command="describe", input=str(bundle_dir))
     dcfg.output.dir = str(out)

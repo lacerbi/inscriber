@@ -53,7 +53,7 @@ def test_defaults_match_design():
     assert rc.llama.host == "127.0.0.1"
     assert rc.llama.port == 0
     assert rc.llama.server_start_timeout == 120
-    assert rc.llama.ctx_size == 8192
+    assert rc.llama.ctx_size == 16384  # headroom for the table pass (8k budget)
     assert rc.inference.mode == "sequential"
     assert rc.ocr.backend == "deepseek-ocr"
     assert rc.ocr.resolution == "large"
@@ -64,6 +64,7 @@ def test_defaults_match_design():
     assert rc.figure.mode == "describe-only"
     assert rc.figure.crop_padding == pytest.approx(0.02)
     assert rc.figure.context_chars == 2000
+    assert rc.table.refine is True
     assert rc.output.split is True
     assert rc.output.page_numbers is False
     assert rc.output.page_separators is False
@@ -153,6 +154,7 @@ def test_every_field_overridable():
         "--vlm-endpoint", "http://localhost:2",
         "--figure-mode", "describe-and-keep",
         "--context-chars", "1500",
+        "--no-table-refine",
         "--no-split",
         "--page-numbers",
         "--page-separators",
@@ -193,6 +195,7 @@ def test_every_field_overridable():
     assert rc.vlm.endpoint == "http://localhost:2"
     assert rc.figure.mode == "describe-and-keep"
     assert rc.figure.context_chars == 1500
+    assert rc.table.refine is False
     assert rc.output.split is False
     assert rc.output.page_numbers is True
     assert rc.output.page_separators is True

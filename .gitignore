@@ -21,4 +21,4 @@ venv/
 config.toml
 *.inscriber-ocr/
 /out/
-tmp-pytest*/
+tmp-*/

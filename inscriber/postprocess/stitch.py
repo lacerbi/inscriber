@@ -88,7 +88,9 @@ def _norm_line(line: str) -> str:
 
 
 def _is_protected_artifact_line(line: str) -> bool:
-    """Lines generated from figure handling must never be treated as page chrome."""
+    """Lines generated from figure/table handling must never be treated as page
+    chrome (a pipe-table row as a page's first/last line could otherwise recur —
+    e.g. identical separator rows — and be stripped, silently losing table data)."""
     stripped = line.strip()
     lowered = stripped.lower()
     return (
@@ -96,6 +98,7 @@ def _is_protected_artifact_line(line: str) -> bool:
         or _IMG_BLOCK_RE.match(stripped) is not None
         or stripped.startswith("> ")
         or stripped.startswith("![")
+        or stripped.startswith("|")
         or stripped.startswith("Figure ")
         or lowered.startswith("<center>figure ")
     )

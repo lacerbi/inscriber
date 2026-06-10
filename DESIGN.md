@@ -7,7 +7,7 @@
 > `paper2llm`). It is written to be read entirely standalone — every concept,
 > dependency, and external quirk needed to build v1 is described here.
 >
-> **Last updated:** 2026-06-09
+> **Last updated:** 2026-06-10 (added §9.7 — VLM table restructuring)
 
 ---
 
@@ -187,8 +187,16 @@ So **every** model `inscriber` uses (OCR and VLM) is configured as a
 - **GGUF filenames in this doc (e.g. `gemma-4-e4b-f16.gguf`) are placeholders** —
   the user supplies the actual paths; real distributions use their own casing and
   quant suffixes (e.g. unsloth `gemma-4-E4B-it-GGUF`).
-- Used purely as a **vision→text** describer (image in, prose out). It does not
-  need grounding or special prompts beyond the description prompt (§9.3).
+- Used as a **vision→text** describer (image in, prose out) for figures (§9) and
+  as the table restructurer (§9.7). It does not need grounding or special prompts
+  beyond the description/table prompts.
+- **Gemma 4 is a thinking model.** Hard tasks spend reasoning tokens before the
+  answer; llama-server strips the thought channel from `content`. `inscriber`
+  activates thinking **explicitly** per request via
+  `chat_template_kwargs: {"enable_thinking": true}` (needs the server's jinja
+  templating; a no-op kwarg falls back to the model default). No `max_tokens` is
+  sent on VLM calls — generation is bounded by `ctx_size`, and hitting the window
+  yields `finish_reason: "length"` (the truncation signal).
 
 ### 2.4 OCR model landscape and why v1 is DeepSeek-OCR-only
 
@@ -236,12 +244,13 @@ abstraction (§8) is built so adding them later is purely additive.
 │  3. OCR pass           (each page PNG → markdown + figure bboxes) [§8]       │
 │        └─ via OcrBackend (DeepSeekOcrBackend) over a managed llama-server    │
 │  4. Figure crop        (bboxes → cropped figure PNGs)        [§8.4]          │
-│  5. VLM pass           (each figure crop + context → <img_desc>) [§9]        │
-│        └─ via VlmBackend (GemmaVlmBackend) over a managed llama-server       │
-│  6. Assemble + clean   (stitch pages, strip headers, inject descriptions)[§10]│
-│  7. Split              (main / appendix / backmatter)        [§11]           │
-│  8. BibTeX (optional, online)                               [§12]           │
-│  9. Write outputs                                           [§14]           │
+│  5. VLM pass: tables   (each <table> blob + page image → pipe table) [§9.7]  │
+│  6. VLM pass: figures  (each figure crop + context → <img_desc>) [§9]        │
+│        └─ both via VlmBackend (GemmaVlmBackend) over ONE managed llama-server│
+│  7. Assemble + clean   (stitch pages, strip headers, inject descriptions)[§10]│
+│  8. Split              (main / appendix / backmatter)        [§11]           │
+│  9. BibTeX (optional, online)                               [§12]           │
+│ 10. Write outputs                                           [§14]           │
 └───────────────────────────────────────────────────────────────────────────┘
         │                               │
         ▼                               ▼
@@ -270,8 +279,9 @@ OCR/VLM boundary (the OCR pass is independent of which VLM describes the figures
   pipeline, OCR through write, in one process.
 - **`inscriber ocr INPUT`** — steps 1–4 only (resolve → rasterize → OCR → figure
   crop), then **write an _OCR bundle_** (§8.6) and stop. No VLM is loaded.
-- **`inscriber describe BUNDLE`** — steps 5–9 (VLM description → assemble → split
-  → BibTeX → write), reading a previously produced OCR bundle. No OCR is loaded.
+- **`inscriber describe BUNDLE`** — steps 5–10 (VLM table restructuring + figure
+  description → assemble → split → BibTeX → write), reading a previously produced
+  OCR bundle. No OCR is loaded.
 
 **Why this is more than the cache.** The OCR cache (§8.6) is an internal,
 content-addressed optimization for `run`. The OCR bundle is a **portable,
@@ -695,8 +705,15 @@ the VLM/assembly stages later, with **no OCR model required**. A directory:
 OUT/paper.inscriber-ocr/
 ├── manifest.json     # source meta + OCR config + per-page results
 ├── figures/          # cropped figure PNGs (fig_p{page}_{i}.png)
-└── pages/            # optional page rasters (kept if --keep-intermediates)
+└── pages/            # page rasters for table pages (page_NNNN.png, §9.7)
 ```
+
+Pages whose markdown contains a restructurable `<table>` blob carry a per-page
+`raster_path` (e.g. `"pages/page_0003.png"`) — the **verbatim** rendered page
+PNG, so `describe` can run the VLM table-restructuring pass (§9.7) with no PDF
+present, and `run`/`describe` share table cache keys (the key hashes the image
+bytes). The field is additive: old readers ignore it (`bundle_schema` stays 1),
+and a bundle without it simply skips table refinement with a warning.
 
 `manifest.json`:
 
@@ -762,9 +779,9 @@ Notes:
   `inscriber_version` is informational and is **not** the gate (it churns every
   release). The §17 round-trip test asserts on `bundle_schema`.
 - **What config `describe` honors** (it has no PDF and no OCR model):
-  - **Applies:** `[vlm].*`, `[figure].mode`, `[figure].context_chars`,
-    `[output].*`, `[bibtex].*`, `[net].offline`, and `[llama].*` + `[inference]`
-    (it still launches a VLM server).
+  - **Applies:** `[vlm].*`, `[table].*` (§9.7), `[figure].mode`,
+    `[figure].context_chars`, `[output].*`, `[bibtex].*`, `[net].offline`, and
+    `[llama].*` + `[inference]` (it still launches a VLM server).
   - **Ignores (baked into the bundle at `ocr` time):** all `[ocr].*`,
     `[figure].detect`, `[figure].crop_padding`.
   - `figure.detect = none` / `--no-figures` at describe time **skips description**
@@ -944,6 +961,61 @@ The key uses the **fully assembled prompt — context text included** — not ju
 template name; otherwise changing `context_chars` or the page text would serve a
 stale description. Lets you re-run the document (e.g. to re-split or re-fetch
 BibTeX) without re-describing figures.
+
+### 9.7 Table restructuring (`postprocess/tables.py`) — tables before figures
+
+> Validated post-v1 in `dev/docs/table-reconstruction-findings.md`; that note holds
+> the experiment history and the prompt rationale. This section is the
+> implemented behavior.
+
+**Problem.** DeepSeek-OCR emits tables as **degenerate HTML** — `<table>…</table>`
+with most cell boundaries missing, so adjacent cells concatenate
+(`Dep. Variable:CCSR-squared:0.616`). All values are present but the grid is
+gone, and it is not post-fixable from the text alone.
+
+**Fix.** For each `<table>` blob, ask the VLM to **restructure** it: the blob
+supplies the values, the **whole page image** supplies the layout, and the rest
+of the page's text supplies correct spellings for merged labels. Low-risk
+*structuring*, not re-OCR — the model copies the blob's values (even its typos).
+The prompt is the validated one from the findings note, verbatim (count-aware
+locator + correct-when-certain + page-text context), assembled by
+`format_table_prompt()` and sent as a single user message, image first.
+
+Mechanics, in pipeline order (step 5, **before** figure description so figure
+context already sees clean tables):
+
+- **Detection** — well-formed `<table>…</table>` spans only (non-greedy regex;
+  an unclosed tag never matches). GLM-OCR emits pipe tables, so it is a natural
+  no-op there.
+- **Guards** — a blob containing a `⟦INSCRIBER_FIG⟧` placeholder is left alone
+  (splicing would destroy the anchor); an empty/value-less blob is left alone
+  (nothing to anchor on → the task would degrade to re-OCR).
+- **Output sanitation** — tolerate a wrapping code fence; reject anything that
+  is not purely a pipe table. **Any failure — error, truncation
+  (`finish_reason != "stop"`), commentary, empty — keeps the original blob**,
+  which still holds every value. (A value-count check was considered and
+  rejected: DeepSeek merges cells, so the blob's count is not a baseline.)
+- **One VLM server for both passes** — the orchestrator's lazy `_VlmSession`
+  starts the server on the first cache miss from either pass and shares it.
+- **Caching** — per table, same store as §9.6, keyed on
+  `(page_image_hash, backend, model/mmproj identities, full assembled prompt,
+  sampling, chat_template_kwargs)` plus a `kind` discriminator.
+- **Two-step** — `ocr` saves the verbatim page raster for table pages
+  (`raster_path`, §8.5); `describe` reads it. Bundles without rasters skip with
+  a warning.
+- **Config** — `[table] refine = true` (default **on**), CLI `--no-table-refine`.
+  Describe-stage; **independent of figure settings** (`--no-figures` does not
+  disable it, and a run with tables but no VLM configured skips with a warning
+  rather than failing).
+- **No token budget** — generation is bounded by `ctx_size` alone (the single
+  size knob; default 16384 leaves ~6–8k for the VLM's thinking + answer on top
+  of the ~2–4k prompt). Gemma 4's thinking is activated explicitly per request
+  via `chat_template_kwargs: {"enable_thinking": true}` (§2.3).
+
+**Open refinements** (deliberately not in this pass): cropping the table region
+for crisper headers (DeepSeek doesn't ground tables with boxes — no clean bbox);
+a system/user prompt split for prefix caching (the validated prompt is a single
+user message; change only with re-validation).
 
 ---
 
@@ -1216,7 +1288,9 @@ bin_dir = "/opt/llama.cpp/build/bin"   # folder containing llama-server[.exe]
 host = "127.0.0.1"
 port = 0                               # 0 = auto-select a free port
 server_start_timeout = 120             # seconds to wait for /health
-ctx_size = 8192                        # -c
+ctx_size = 16384                       # -c; the single size knob (prompt +
+                                       #   generation share it; 16384 leaves room
+                                       #   for the table pass, §9.7)
 
 [inference]
 mode = "sequential"                    # "sequential" | "concurrent"
@@ -1245,6 +1319,10 @@ mode = "describe-only"                 # describe-only (paper2llm default) |
                                        #   describe-and-keep | placeholder
 crop_padding = 0.02                    # fraction of page dims (ocr-stage)
 context_chars = 2000                   # whole-page context truncation cap (describe-stage, §9.5)
+
+[table]
+refine = true                          # VLM-restructure DeepSeek <table> blobs (§9.7;
+                                       #   describe-stage, independent of [figure])
 
 [output]
 dir = "."                              # output directory
@@ -1317,6 +1395,7 @@ inscriber describe BUNDLE [vlm-options]# OCR bundle → VLM + assemble + write
       --vlm-endpoint URL
       --figure-mode {describe-only,describe-and-keep,placeholder}
       --context-chars N         whole-page context truncation cap
+      --no-table-refine         keep raw OCR tables (skip VLM restructuring, §9.7)
 
   # --- output / assembly (run, describe) ---
       --no-split                write only the full document
@@ -1362,6 +1441,7 @@ inscriber describe BUNDLE [vlm-options]# OCR bundle → VLM + assemble + write
 | `figure.detect`                                        | `--figure-detect` (`--no-figures` ⇒ `none`)                                       |
 | `figure.mode`                                          | `--figure-mode`                                                                   |
 | `figure.crop_padding` / `figure.context_chars`         | `--crop-padding` / `--context-chars`                                              |
+| `table.refine`                                         | `--no-table-refine` (sets false)                                                  |
 | `output.dir`                                           | `-o/--output-dir`                                                                 |
 | `output.split`                                         | `--no-split` (sets false)                                                         |
 | `output.page_numbers` / `output.page_separators`       | `--page-numbers` / `--page-separators`                                            |
@@ -1486,6 +1566,11 @@ the inference layer at the **chat-client boundary**.
   produces output consistent with `run` (same base name from `manifest.source.name`,
   §8.5); a hand-edited page markdown survives; a `bundle_schema` higher than
   supported is rejected (§8.5).
+- **`test_tables.py`** — the table-restructuring pass (§9.7): blob detection /
+  guards / sanitation / splicing units, thinking-kwarg + `finish_reason`
+  truncation, cache-key disjointness, and mocked `run` + `ocr`→`describe`
+  integration (verbatim bundle rasters, old-bundle and no-VLM degradation,
+  multi-table locators, concurrent mode).
 - **`test_pdf_embedded_figures.py`** — `figure.detect = pdf-embedded` on a fixture
   PDF with an embedded raster figure yields a crop + appended placeholder (§8.4).
 - **`test_splitter.py`** — section-detection on a battery of synthetic markdown
@@ -1651,6 +1736,17 @@ is wired.
   grounding/coordinate convention must be re-confirmed when that lands.
 - **Table reconstruction across page breaks** (§10.3) — currently a documented
   limitation.
+- **Table-restructuring follow-ups** (beyond the open refinements in §9.7; from
+  the 2026-06-10 implementation review): (a) consolidate the duplicated
+  scaffolding between `_refine_tables` and `_vlm_describe` — each builds its own
+  keys-only backend, `VlmCache`, and model identities, and the table prompt is
+  assembled twice (once for the cache key, once inside the backend call); these
+  must stay in sync or be unified. (b) `VlmCache` stores restructured tables
+  under a JSON field literally named `"description"` — harmless (key payloads
+  are disjoint) but misleading. (c) Blob-detection edge cases that would
+  mis-splice: a genuinely _nested_ `<table>` (the non-greedy match leaves an
+  orphan tail) and a `<table>` inside a fenced code block — both unobserved in
+  DeepSeek output; revisit if another OCR backend can emit them.
 - **Equation fidelity** — verify DeepSeek-OCR's LaTeX/math output quality on real
   papers; may need a normalization pass.
 - **Batch mode** — process a directory of PDFs reusing a single warm server.

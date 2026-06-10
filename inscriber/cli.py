@@ -104,6 +104,9 @@ def _add_vlm_stage(p: argparse.ArgumentParser) -> None:
                    choices=("describe-only", "describe-and-keep", "placeholder"))
     p.add_argument("--context-chars", dest="context_chars", type=int, default=None,
                    metavar="N", help="whole-page context truncation cap")
+    p.add_argument("--no-table-refine", dest="table_refine", action="store_const",
+                   const=False, default=None,
+                   help="keep raw OCR tables (skip VLM table restructuring)")
 
 
 def _add_output_stage(p: argparse.ArgumentParser) -> None:
@@ -228,6 +231,8 @@ def collect_cli_sections(args: argparse.Namespace) -> dict[str, dict]:
     setv("figure", "crop_padding", g("crop_padding"))
     setv("figure", "mode", g("figure_mode"))
     setv("figure", "context_chars", g("context_chars"))
+    # table
+    setv("table", "refine", g("table_refine"))
     # vlm
     setv("vlm", "backend", g("vlm_backend"))
     setv("vlm", "model", g("vlm_model"))

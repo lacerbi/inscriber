@@ -5,9 +5,9 @@ your own machine.**
 
 `inscriber` is a cross-platform command-line tool that runs OCR + figure
 description locally using [llama.cpp](https://github.com/ggml-org/llama.cpp)
-(DeepSeek-OCR for text + figure grounding, Gemma 4 for figure description). It is
-the local, offline-first reimagining of the cloud web app
-[`paper2llm`](https://github.com/lacerbi/paper2llm).
+(DeepSeek-OCR for text + figure grounding, Gemma 4 for figure description and
+table refinement). It is the local, offline-first reimagining of the cloud web
+app [`paper2llm`](https://github.com/lacerbi/paper2llm).
 
 > **Status:** under active development. See `DESIGN.md` for the authoritative
 > specification and `PLAN-inscriber-v1.md` for the build roadmap.
@@ -39,16 +39,23 @@ and Gemma 4 for figure description. `inscriber` bundles no model weights.
 A multimodal model in llama.cpp is **two GGUF files**: the text/decoder model
 (`-m`) and the multimodal projector (`--mmproj`). You need both for each model:
 
-| role | text model | projector (`mmproj`) | source |
-| ---- | ---------- | -------------------- | ------ |
-| OCR  | `deepseek-ocr-bf16.gguf` (BF16 recommended; **avoid Q4_K_M** — it loops) | `mmproj-deepseek-ocr-bf16.gguf` | `ggml-org/DeepSeek-OCR-GGUF` |
-| VLM  | `gemma-4-E4B-it-*.gguf` | `mmproj-*.gguf` | unsloth `gemma-4-E4B-it-GGUF` |
+| role | text model                                                               | projector (`mmproj`)            | source                        |
+| ---- | ------------------------------------------------------------------------ | ------------------------------- | ----------------------------- |
+| OCR  | `deepseek-ocr-bf16.gguf` (BF16 recommended; **avoid Q4_K_M** — it loops) | `mmproj-deepseek-ocr-bf16.gguf` | `ggml-org/DeepSeek-OCR-GGUF`  |
+| VLM  | `gemma-4-E4B-it-*.gguf`                                                  | `mmproj-*.gguf`                 | unsloth `gemma-4-E4B-it-GGUF` |
 
 Point `inscriber` at the llama.cpp `bin` dir and the four GGUF paths (via config or
 flags). **GPU offload is automatic by default** — with `n_gpu_layers = "auto"`,
 inscriber omits `-ngl` so llama.cpp uses its own default (modern builds auto-fit as
 many layers into VRAM as they can). Override per-server with `--ocr-ngl` / `--vlm-ngl`
 (`all`, `0` for CPU, or an explicit layer count for partial offload).
+
+**Tables:** DeepSeek-OCR emits tables as degenerate HTML; by default inscriber has
+the VLM restructure each one into a clean Markdown pipe table from the page image
+(values are preserved from the OCR — see `dev/docs/table-reconstruction-findings.md`).
+On any failure the raw OCR table is kept. Disable with `--no-table-refine`.
+`ctx_size` (default 16384) is the single size knob — prompt and generation share
+it, and complex tables need ~6–8k tokens of VLM thinking + answer.
 
 ## Quickstart
 
@@ -77,18 +84,19 @@ then the platform config dir; `--config PATH` overrides both. **Every field is
 overridable from the CLI** (precedence: CLI flag > config file > default).
 Highlights (see `DESIGN.md` §13 for the full surface):
 
-| flag | meaning |
-| ---- | ------- |
-| `--ocr-resolution {tiny,small,base,large,gundam}` | OCR render quality (default `large`) |
-| `--figure-detect {auto,grounding,none,pdf-embedded}` | figure detection (`--no-figures` = `none`) |
-| `--figure-mode {describe-only,describe-and-keep,placeholder}` | how figures render |
-| `--no-split` / `--page-numbers` / `--page-separators` / `--no-notice` | output/assembly options |
-| `--bibtex` / `--bibtex-in-doc` | online Semantic Scholar BibTeX (opt-in) |
-| `--offline` | hard-disable all network use (URL input + BibTeX) |
-| `--mode {sequential,concurrent}` | one model resident (default) vs both (VRAM caveat) |
-| `--no-cache` / `--refresh` | cache control |
+| flag                                                                  | meaning                                            |
+| --------------------------------------------------------------------- | -------------------------------------------------- |
+| `--ocr-resolution {tiny,small,base,large,gundam}`                     | OCR render quality (default `large`)               |
+| `--figure-detect {auto,grounding,none,pdf-embedded}`                  | figure detection (`--no-figures` = `none`)         |
+| `--figure-mode {describe-only,describe-and-keep,placeholder}`         | how figures render                                 |
+| `--no-table-refine`                                                    | keep raw OCR tables (skip VLM restructuring)       |
+| `--no-split` / `--page-numbers` / `--page-separators` / `--no-notice` | output/assembly options                            |
+| `--bibtex` / `--bibtex-in-doc`                                        | online Semantic Scholar BibTeX (opt-in)            |
+| `--offline`                                                           | hard-disable all network use (URL input + BibTeX)  |
+| `--mode {sequential,concurrent}`                                      | one model resident (default) vs both (VRAM caveat) |
+| `--no-cache` / `--refresh`                                            | cache control                                      |
 
-Status: see `PLAN-inscriber-v1.md` for the build roadmap and `docs/M1A-FINDINGS.md`
+Status: see `PLAN-inscriber-v1.md` for the build roadmap and `dev/docs/M1A-FINDINGS.md`
 for the real-hardware findings the OCR backend is pinned to.
 
 ## Development

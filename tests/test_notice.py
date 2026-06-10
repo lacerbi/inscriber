@@ -30,3 +30,14 @@ def test_append_notice_uses_horizontal_rule():
         "Body\n\n---\n\n"
         "*Transcribed with OCR; text may contain mistakes.*\n"
     )
+
+
+def test_notice_credits_vlm_for_restructured_tables():
+    md = "Text.\n\n| A | B |\n| --- | --- |\n| 1 | 2 |"
+    assert build_transcription_notice(md, vlm_tables=True) == (
+        "*Transcribed with OCR and VLMs; text and tables may contain mistakes.*"
+    )
+    # Without the flag, tables alone do not imply a VLM was involved.
+    assert build_transcription_notice(md) == (
+        "*Transcribed with OCR; text and tables may contain mistakes.*"
+    )
