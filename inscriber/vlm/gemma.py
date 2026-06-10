@@ -2,7 +2,10 @@
 
 Used as a vision→text describer (figure crops → prose, DESIGN §9) and as the
 table restructurer (whole page image + DeepSeek ``<table>`` blob → Markdown pipe
-table, dev/docs/table-reconstruction-findings.md).
+table, dev/docs/table-reconstruction-findings.md). Prompts are assembled once by
+the orchestrator via ``build_prompt``/``build_table_prompt`` — the same strings
+are the cache-key material (DESIGN §9.6) — and passed into
+``describe``/``restructure_table``.
 
 Gemma 4 is a **thinking model**: hard tasks spend reasoning tokens before the
 answer (llama-server strips the thought channel from ``content``). Thinking is
@@ -65,10 +68,9 @@ class GemmaVlmBackend(VlmBackend):
         finish_reason = getattr(self.client, "last_finish_reason", None)
         return isinstance(finish_reason, str) and finish_reason != "stop"
 
-    def describe(self, image_png: bytes, context_text: str | None) -> str:
+    def describe(self, image_png: bytes, prompt: str) -> str:
         if self.client is None:
             raise InferenceError("GemmaVlmBackend has no chat client (no VLM endpoint)")
-        prompt = self.build_prompt(context_text)
         raw = self.client.chat_image(
             image_png=image_png,
             prompt=prompt,
@@ -82,20 +84,9 @@ class GemmaVlmBackend(VlmBackend):
             return desc.rstrip() + f" {TRUNCATED_MARKER}"
         return desc
 
-    def restructure_table(
-        self,
-        page_png: bytes,
-        table_blob: str,
-        page_text: str,
-        *,
-        table_index: int,
-        table_count: int,
-    ) -> str | None:
+    def restructure_table(self, page_png: bytes, prompt: str) -> str | None:
         if self.client is None:
             raise InferenceError("GemmaVlmBackend has no chat client (no VLM endpoint)")
-        prompt = self.build_table_prompt(
-            table_blob, page_text, table_index=table_index, table_count=table_count
-        )
         raw = self.client.chat_image(
             image_png=page_png,
             prompt=prompt,

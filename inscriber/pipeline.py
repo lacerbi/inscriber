@@ -294,6 +294,11 @@ def _vlm_configured(cfg: RunConfig) -> bool:
 class _VlmSession:
     """Lazily-launched VLM server shared by the table and figure passes.
 
+    Owns the ONE backend instance (``proto``), the shared :class:`VlmCache`, and
+    the model identities — the prompts/sampling/template kwargs that feed the
+    cache keys come from the same object that performs the inference, so a key
+    can never drift from the request actually sent (DESIGN §9.2/§9.6).
+
     Nothing is launched until the first :meth:`backend` call, so a fully-cached
     (or empty) pass never starts a server; both passes reuse one server when
     either has a miss. ``close()`` tears it down.
@@ -305,20 +310,28 @@ class _VlmSession:
         self.cfg = cfg
         self.work_dir = work_dir
         self.endpoint = endpoint_override or cfg.vlm.endpoint
+        self.proto = get_vlm_backend(cfg.vlm.backend)  # client attached on first miss
+        self.cache = VlmCache(enabled=cfg.cache.enabled, refresh=cfg.cache.refresh)
+        self._identities: tuple[str, str] | None = None
         self._stack: ExitStack | None = None
-        self._backend = None
+
+    def identities(self) -> tuple[str, str]:
+        """Model/mmproj identities for cache keys (no server launch needed)."""
+        if self._identities is None:
+            self._identities = _vlm_identities(self.cfg, self.cache)
+        return self._identities
 
     def backend(self):
-        """The client-connected VLM backend, launching the server on first use."""
-        if self._backend is not None:
-            return self._backend
+        """The client-connected VLM backend (the same ``proto`` instance the
+        cache keys are built from), launching the server on first use."""
+        if self.proto.client is not None:
+            return self.proto
         cfg = self.cfg
         if not self.endpoint and find_binary(cfg.llama.bin_dir, "llama-server") is None:
             raise ConfigError(
                 "llama-server binary not found "
                 f"(llama.bin_dir={cfg.llama.bin_dir!r}; not on PATH either)"
             )
-        proto = get_vlm_backend(cfg.vlm.backend)
         mgr = LlamaServerManager(
             cfg.llama.bin_dir,
             server_start_timeout=cfg.llama.server_start_timeout,
@@ -331,7 +344,7 @@ class _VlmSession:
             port=cfg.llama.port,
             ctx_size=cfg.llama.ctx_size,
             n_gpu_layers=cfg.vlm.n_gpu_layers,
-            extra_flags=proto.server_flags(),
+            extra_flags=self.proto.server_flags(),
             chat_template=None,
             label="vlm",
         )
@@ -342,14 +355,14 @@ class _VlmSession:
             stack.close()
             raise
         self._stack = stack
-        self._backend = get_vlm_backend(cfg.vlm.backend, client=ChatClient(url))
-        return self._backend
+        self.proto.client = ChatClient(url)
+        return self.proto
 
     def close(self) -> None:
         if self._stack is not None:
             self._stack.close()
             self._stack = None
-            self._backend = None
+            self.proto.client = None
 
 
 def _refine_tables(cfg: RunConfig, pages: list[_Page], session: _VlmSession) -> int:
@@ -396,9 +409,9 @@ def _refine_tables(cfg: RunConfig, pages: list[_Page], session: _VlmSession) -> 
         )
         return 0
 
-    proto = get_vlm_backend(cfg.vlm.backend)  # client=None — used for prompts/keys
-    vlm_cache = VlmCache(enabled=cfg.cache.enabled, refresh=cfg.cache.refresh)
-    model_id, mmproj_id = _vlm_identities(cfg, vlm_cache)
+    proto = session.proto  # one instance: cache-key material AND inference (§9.2)
+    vlm_cache = session.cache
+    model_id, mmproj_id = session.identities()
 
     total = sum(len(entries) for _, _, _, entries in work)
     done = 0
@@ -427,10 +440,8 @@ def _refine_tables(cfg: RunConfig, pages: list[_Page], session: _VlmSession) -> 
                 continue
             logger.info("refining table %d/%d (page %d)…", done, total, pg.page_number)
             try:
-                raw = session.backend().restructure_table(
-                    pg.raster_png, blob, context,
-                    table_index=index, table_count=blob_count,
-                )
+                # The key's prompt string is the one sent — assembled exactly once.
+                raw = session.backend().restructure_table(pg.raster_png, prompt)
             except ConfigError:
                 raise  # missing binary is a setup error, not a per-table failure
             except Exception as e:  # noqa: BLE001 - resilience (DESIGN §16)
@@ -488,13 +499,13 @@ def _vlm_describe(
     if not tasks:
         return {}
 
-    proto = get_vlm_backend(cfg.vlm.backend)  # client=None — used for prompts/keys
-    vlm_cache = VlmCache(enabled=cfg.cache.enabled, refresh=cfg.cache.refresh)
-    model_id, mmproj_id = _vlm_identities(cfg, vlm_cache)
+    proto = session.proto  # one instance: cache-key material AND inference (§9.2)
+    vlm_cache = session.cache
+    model_id, mmproj_id = session.identities()
 
     descriptions: dict[str, str] = {}
     keys: dict[str, str] = {}
-    todo: list[tuple[Figure, str, bytes]] = []
+    todo: list[tuple[Figure, str, bytes]] = []  # carries the key's prompt verbatim
     for fig, context, crop_bytes in tasks:
         prompt = proto.build_prompt(context)
         key = make_vlm_key(
@@ -512,14 +523,14 @@ def _vlm_describe(
             logger.info("figure %s: description cache hit", fig.id)
             descriptions[fig.id] = cached
         else:
-            todo.append((fig, context, crop_bytes))
+            todo.append((fig, prompt, crop_bytes))
 
     if todo:
         backend = session.backend()
-        for i, (fig, context, crop_bytes) in enumerate(todo, 1):
+        for i, (fig, prompt, crop_bytes) in enumerate(todo, 1):
             logger.info("describing figure %d/%d (%s)…", i, len(todo), fig.id)
             try:
-                desc = backend.describe(crop_bytes, context)
+                desc = backend.describe(crop_bytes, prompt)
             except Exception as e:  # noqa: BLE001 - resilience (DESIGN §16)
                 logger.warning("figure %s description failed: %s", fig.id, e)
                 desc = ""  # injection → [figure description unavailable]

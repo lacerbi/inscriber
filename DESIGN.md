@@ -12,8 +12,10 @@
 > `paper2llm`). It is written to be read entirely standalone — every concept,
 > dependency, and external quirk needed to build v1 is described here.
 >
-> **Last updated:** 2026-06-10 (added §9.7 — VLM table restructuring; aligned
-> §2.1–2.2, §8.3, §25 with the M1a-confirmed facts)
+> **Last updated:** 2026-06-10 (§9.2/§9.6: one VLM backend instance, prompts
+> assembled once — cache keys cannot drift from the requests sent; §9.7:
+> nested-`<table>` guard. Earlier same day: added §9.7; aligned §2.1–2.2, §8.3,
+> §25 with the M1a-confirmed facts)
 
 ---
 
@@ -862,14 +864,26 @@ here it's a local VLM (Gemma 4).
 ```python
 class VlmBackend(ABC):
     name: str
+    client: ChatClient | None   # attached by the pipeline's VLM session at launch
+
+    def build_prompt(self, context_text: str | None) -> str: ...
+    """Assemble the full §9.3 prompt — ALSO the VLM cache-key material (§9.6)."""
+
     @abstractmethod
-    def describe(self, image_png: bytes, context_text: str | None) -> str: ...
+    def describe(self, image_png: bytes, prompt: str) -> str: ...
     """Return the cleaned description text (already extracted from tags)."""
 ```
 
-`GemmaVlmBackend.describe` builds the prompt (§9.3), calls the chat client with
-the image as a base64 data URL, then extracts the description from the
-`<img_desc>…</img_desc>` tags (§9.4).
+**One backend instance serves both roles.** The orchestrator assembles each
+prompt exactly once via `build_prompt` (and `build_table_prompt`, §9.7), uses
+that string as cache-key material (§9.6), and passes the same string into the
+inference call — so a cached key can never drift from the request actually
+sent. `sampling()`/`chat_template_kwargs()` likewise feed keys and requests
+from the single instance the pipeline's `_VlmSession` owns (the session
+attaches the chat `client` when the VLM server first comes up).
+`GemmaVlmBackend.describe` calls the chat client with the image as a base64
+data URL, then extracts the description from the `<img_desc>…</img_desc>` tags
+(§9.4).
 
 ### 9.3 The figure-description prompt (`postprocess/prompt.py`)
 
@@ -983,8 +997,10 @@ Same scheme as §8.6, keyed on `(figure_crop_hash, vlm_backend_name,
 vlm_model_identity, vlm_mmproj_identity, full_assembled_prompt, sampling_params)`.
 The key uses the **fully assembled prompt — context text included** — not just a
 template name; otherwise changing `context_chars` or the page text would serve a
-stale description. Lets you re-run the document (e.g. to re-split or re-fetch
-BibTeX) without re-describing figures.
+stale description. The orchestrator assembles that prompt once and passes the
+identical string into the backend call (§9.2), so key and request cannot drift.
+Lets you re-run the document (e.g. to re-split or re-fetch BibTeX) without
+re-describing figures.
 
 ### 9.7 Table restructuring (`postprocess/tables.py`) — tables before figures
 
@@ -1015,15 +1031,20 @@ context already sees clean tables):
   an unclosed tag never matches). GLM-OCR emits pipe tables, so it is a natural
   no-op there.
 - **Guards** — a blob containing a `⟦INSCRIBER_FIG⟧` placeholder is left alone
-  (splicing would destroy the anchor); an empty/value-less blob is left alone
-  (nothing to anchor on → the task would degrade to re-OCR).
+  (splicing would destroy the anchor); a blob containing a *nested* `<table>`
+  is left alone (the non-greedy match ends at the inner `</table>`, so splicing
+  would orphan the outer tail — unobserved from DeepSeek, but model output is
+  untrusted); an empty/value-less blob is left alone (nothing to anchor on →
+  the task would degrade to re-OCR).
 - **Output sanitation** — tolerate a wrapping code fence; reject anything that
   is not purely a pipe table. **Any failure — error, truncation
   (`finish_reason != "stop"`), commentary, empty — keeps the original blob**,
   which still holds every value. (A value-count check was considered and
   rejected: DeepSeek merges cells, so the blob's count is not a baseline.)
 - **One VLM server for both passes** — the orchestrator's lazy `_VlmSession`
-  starts the server on the first cache miss from either pass and shares it.
+  starts the server on the first cache miss from either pass and shares it
+  (along with the one backend instance and `VlmCache` both passes' keys are
+  built from, §9.2).
 - **Caching** — per table, same store as §9.6, keyed on
   `(page_image_hash, backend, model/mmproj identities, full assembled prompt,
   sampling, chat_template_kwargs)` plus a `kind` discriminator.

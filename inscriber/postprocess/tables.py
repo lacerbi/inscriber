@@ -22,6 +22,7 @@ from inscriber.postprocess.inject import PLACEHOLDER_RE
 # an unclosed <table> never matches (left untouched — never risk eating content).
 TABLE_BLOB_RE = re.compile(r"<table\b[^>]*>.*?</table\s*>", re.IGNORECASE | re.DOTALL)
 
+_TABLE_OPEN_RE = re.compile(r"<table\b", re.IGNORECASE)
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
 _CODE_FENCE_RE = re.compile(r"^```[A-Za-z]*\s*\n(?P<body>.*?)\n?```\s*$", re.DOTALL)
 
@@ -60,10 +61,15 @@ def blob_is_refinable(blob: str) -> bool:
 
     * A figure placeholder inside the blob must survive — splicing would destroy
       the only anchor for the description, so the blob is left alone.
+    * A nested ``<table>`` (unobserved from DeepSeek, but model output is
+      untrusted) means the non-greedy match stopped at the INNER ``</table>`` —
+      splicing that span would orphan the outer blob's tail, so skip.
     * An empty/value-less blob gives the VLM nothing to anchor on: its task would
       degrade to from-scratch re-OCR of the image (hallucination risk), so skip.
     """
     if PLACEHOLDER_RE.search(blob):
+        return False
+    if len(_TABLE_OPEN_RE.findall(blob)) > 1:
         return False
     text = _HTML_TAG_RE.sub(" ", blob)
     return re.search(r"[0-9A-Za-z]", text) is not None

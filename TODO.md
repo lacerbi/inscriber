@@ -38,15 +38,14 @@ Legend: `[ ]` todo · `[!]` blocked.
 
 ## Code debts (2026-06-10 implementation review)
 
-- [ ] **Consolidate the duplicated VLM-pass scaffolding** between
-      `_refine_tables` and `_vlm_describe` (each builds its own keys-only
-      backend, `VlmCache`, and model identities); the table prompt is assembled
-      twice (once for the cache key, once inside the backend call) — unify, or
-      assert the two stay equal.
 - [ ] **`VlmCache` value field naming**: restructured tables are stored under a
       JSON field literally named `"description"` — harmless (key payloads are
-      disjoint) but misleading; rename/generalize (bump `VLM_VALUE_SCHEMA`).
-- [ ] **Blob-detection edge cases** that would mis-splice: a genuinely *nested*
-      `<table>` (the non-greedy match leaves an orphan tail) and a `<table>`
-      inside a fenced code block. Both unobserved in DeepSeek output — handle
-      if another OCR backend can emit them.
+      disjoint) but misleading. Fold the rename into the next
+      `VLM_VALUE_SCHEMA` bump made for a real reason; a standalone bump would
+      needlessly invalidate every user's cached descriptions/tables.
+- [ ] **`<table>` inside a fenced code block** would be mis-spliced (blob
+      detection doesn't see fences). Unobserved in DeepSeek output — handle if
+      another OCR backend can emit fenced HTML. (The companion edge case, a
+      nested `<table>`, is now guarded in `blob_is_refinable`; the VLM-pass
+      scaffolding consolidation from this review also landed — one backend
+      instance + prompt-assembled-once, DESIGN §9.2.)

@@ -66,6 +66,13 @@ def test_empty_blob_is_not_refinable():
     assert blob_is_refinable(BLOB)
 
 
+def test_nested_table_blob_is_not_refinable():
+    md = "before\n<table><td>a</td><table><td>b</td></table></table>\nafter"
+    ((_, _, blob),) = find_table_blobs(md)
+    assert blob.endswith("<td>b</td></table>")  # non-greedy match stops at the INNER close
+    assert not blob_is_refinable(blob)  # splicing would orphan the outer </table> tail
+
+
 def test_table_page_context_strips_blobs_and_placeholders():
     md = f"Prose before.\n\n{BLOB}\n\n⟦INSCRIBER_FIG:fig_p1_1⟧\n\nProse after."
     ctx = table_page_context(md)
@@ -153,9 +160,11 @@ class _FakeClient:
 def test_restructure_table_returns_raw_and_sends_thinking_kwarg():
     client = _FakeClient(PIPE_TABLE)
     backend = GemmaVlmBackend(client=client)
-    out = backend.restructure_table(b"png", BLOB, "page text", table_index=1, table_count=1)
+    prompt = backend.build_table_prompt(BLOB, "page text", table_index=1, table_count=1)
+    out = backend.restructure_table(b"png", prompt)
     assert out == PIPE_TABLE
     call = client.calls[0]
+    assert call["prompt"] == prompt  # the cache-key prompt is what gets sent
     assert call["chat_template_kwargs"] == {"enable_thinking": True}
     assert "max_tokens" not in call  # ctx_size is the single size knob
     assert call["image_first"] is True
@@ -165,16 +174,14 @@ def test_restructure_table_returns_raw_and_sends_thinking_kwarg():
 def test_restructure_table_truncated_returns_none():
     client = _FakeClient(PIPE_TABLE, finish_reason="length")
     backend = GemmaVlmBackend(client=client)
-    assert (
-        backend.restructure_table(b"png", BLOB, "page text", table_index=1, table_count=1)
-        is None
-    )
+    prompt = backend.build_table_prompt(BLOB, "page text", table_index=1, table_count=1)
+    assert backend.restructure_table(b"png", prompt) is None
 
 
 def test_describe_sends_thinking_kwarg():
     client = _FakeClient("<img_desc>A chart.</img_desc>")
     backend = GemmaVlmBackend(client=client)
-    assert backend.describe(b"png", None) == "A chart."
+    assert backend.describe(b"png", backend.build_prompt(None)) == "A chart."
     assert client.calls[0]["chat_template_kwargs"] == {"enable_thinking": True}
 
 

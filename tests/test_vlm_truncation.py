@@ -80,14 +80,17 @@ class _FakeClient:
 
 def test_gemma_appends_truncated_marker_on_length():
     backend = GemmaVlmBackend(client=_FakeClient("length"))
-    assert backend.describe(b"png", None) == "A long partial description [...]"
+    prompt = backend.build_prompt(None)
+    assert backend.describe(b"png", prompt) == "A long partial description [...]"
 
 
 def test_gemma_does_not_mark_on_stop():
     backend = GemmaVlmBackend(client=_FakeClient("stop"))
-    assert backend.describe(b"png", None) == "A long partial description"
+    prompt = backend.build_prompt(None)
+    assert backend.describe(b"png", prompt) == "A long partial description"
 
 
 def test_gemma_does_not_mark_when_finish_reason_unknown():
     backend = GemmaVlmBackend(client=_FakeClient(None))
-    assert backend.describe(b"png", None) == "A long partial description"
+    prompt = backend.build_prompt(None)
+    assert backend.describe(b"png", prompt) == "A long partial description"

@@ -4,20 +4,29 @@ restructuring (dev/docs/table-reconstruction-findings.md)."""
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from inscriber.llama.client import ChatClient
 
 
 class VlmBackend(ABC):
-    """A vision→text figure describer (image in, prose out)."""
+    """A vision→text figure describer (image in, prose out).
+
+    One instance serves both roles (DESIGN §9.2): the ``build_*`` prompt
+    assemblers double as the cache-key material (§9.6), and the same instance
+    performs the inference once the pipeline's VLM session attaches a chat
+    ``client``. The caller assembles each prompt exactly once and passes the
+    same string into ``describe``/``restructure_table``, so a cached key can
+    never drift from the request actually sent.
+    """
 
     name: str = "base"
-
-    @abstractmethod
-    def describe(self, image_png: bytes, context_text: str | None) -> str:
-        """Return the cleaned description text (already extracted from tags)."""
+    client: ChatClient | None = None  # attached by the VLM session at server launch
 
     def build_prompt(self, context_text: str | None) -> str:
-        """The fully-assembled prompt (context included) — also the VLM cache key
-        material (DESIGN §9.6)."""
+        """The fully-assembled figure prompt (context included) — also the VLM
+        cache key material (DESIGN §9.6)."""
         raise NotImplementedError
 
     def build_table_prompt(
@@ -27,16 +36,14 @@ class VlmBackend(ABC):
         key material."""
         raise NotImplementedError
 
-    def restructure_table(
-        self,
-        page_png: bytes,
-        table_blob: str,
-        page_text: str,
-        *,
-        table_index: int,
-        table_count: int,
-    ) -> str | None:
-        """One table restructure (whole-page image + OCR blob → Markdown table).
+    @abstractmethod
+    def describe(self, image_png: bytes, prompt: str) -> str:
+        """One figure description (crop + a :meth:`build_prompt` prompt).
+        Returns the cleaned description text (already extracted from tags)."""
+
+    def restructure_table(self, page_png: bytes, prompt: str) -> str | None:
+        """One table restructure (whole-page image + a :meth:`build_table_prompt`
+        prompt).
 
         Returns the raw model response, or ``None`` when the response was
         truncated — a truncated table silently loses rows, while the original
