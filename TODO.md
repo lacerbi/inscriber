@@ -12,9 +12,6 @@ Legend: `[ ]` todo · `[!]` blocked.
       `--ocr-resolution gundam` is first exercised, determine empirically
       whether grounding coords are relative to the 1024 global view or the
       tiles; extend the `grid_to_norm` golden tests with the answer.
-- [ ] **BF16 DeepSeek weights** (M1A-FINDINGS "remaining confirmations"):
-      confirm the recommended bf16 GGUFs produce the same `LABEL[[bbox]]`
-      format and padded-square frame as the tested Q8_0.
 - [ ] **Equation fidelity**: check DeepSeek-OCR's LaTeX/math output quality on
       real papers (inline `\(…\)` observed in M1a); decide whether a
       normalization pass is needed.

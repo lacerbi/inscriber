@@ -110,3 +110,9 @@ and attaching the following `image_caption` text as the figure's caption.
 M1b's parser + coordinate mapping are locked to: **server HTTP path**, **image-first**,
 **`LABEL[[bbox]]` block format**, **padded-square frame**. Remaining confirmations
 (non-blocking): bf16 weight produces identical format/frame; Gundam coord frame.
+
+> **Update (2026-06-10):** the **bf16 confirmation is closed** — all subsequent
+> real runs (the 39-page test paper incl. grounded figures/tables, and the table
+> verification) used `deepseek-ocr-bf16.gguf` per the working config and produced
+> the same `LABEL[[bbox]]` format with correct padded-square crops. Gundam frame
+> remains open (`TODO.md`).
