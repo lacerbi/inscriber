@@ -14,7 +14,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
+REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
 from inscriber.input.resolver import resolve_local_pdf  # noqa: E402
@@ -28,7 +28,7 @@ MODELS = "C:/Users/luigi/llms/models"
 def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--pdf", default=str(REPO / "tests/fixtures/sample_paper.pdf"))
-    p.add_argument("--bin-dir", default="C:/Users/luigi/llms")
+    p.add_argument("--bin-dir", default="C:/Users/luigi/llms/new")  # >= 9587 (gate)
     p.add_argument("--ocr-model", default=f"{MODELS}/DeepSeek-OCR-Q8_0.gguf")
     p.add_argument("--ocr-mmproj", default=f"{MODELS}/mmproj-deepseek-ocr-q8_0.gguf")
     p.add_argument("--ngl", type=int, default=99)

@@ -306,6 +306,13 @@ def test_build_identity_endpoint_degrades_to_unknown(monkeypatch):
     assert server_mod.llama_build_identity("", endpoint="http://gpu-box:9000") == "unknown"
 
 
+def test_build_number_parses_both_identity_forms():
+    assert server_mod.build_number("version: 9587 (d2e22ed97)") == 9587
+    assert server_mod.build_number("b9587-d2e22ed97") == 9587  # /props build_info
+    assert server_mod.build_number("unknown") is None
+    assert server_mod.build_number("") is None
+
+
 # --------------------------------------------------------------------------- #
 # mtmd-cli fallback arg construction (DESIGN §2.1, §2.2)
 # --------------------------------------------------------------------------- #

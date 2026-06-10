@@ -22,8 +22,10 @@ python -m inscriber run paper.pdf -o out/   # real runs need llama.cpp + GGUFs
 ```
 
 Real runs read `./config.toml` (gitignored, machine-local) — `config.example.toml`
-is the tracked template. The maintainer's setup is llama.cpp build 9028 on an
-RTX 4060 8GB.
+is the tracked template. The maintainer's setup is llama.cpp build 9587 on an
+RTX 4060 8GB. Builds **older than 9587 are refused for OCR**
+(`DeepSeekOcrBackend.min_server_build` — the grounding coordinate frame changed
+upstream; DESIGN §2.2, `dev/docs/build-9587-verification.md`).
 
 ## Where truth lives (read before changing behavior)
 

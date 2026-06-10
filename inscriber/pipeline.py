@@ -40,6 +40,7 @@ from inscriber.llama.client import ChatClient
 from inscriber.llama.server import (
     LlamaServerManager,
     ServerSpec,
+    build_number,
     endpoint_or_serve,
     llama_build_identity,
 )
@@ -171,6 +172,37 @@ def _ocr_identities(cfg: RunConfig, cache: OcrCache) -> tuple[str, str, str]:
     )
 
 
+def _check_server_build(backend, server_identity: str) -> None:
+    """Enforce the backend's minimum llama.cpp build (DESIGN §2.2/§8.2).
+
+    Model-side preprocessing changes across builds — DeepSeek-OCR's grounding
+    coordinate frame switched from padded-square to per-axis between builds 9028
+    and 9587 — so running a backend against an older server than its pinned
+    behavior silently corrupts output (shifted figure crops). An unparseable
+    identity (an endpoint without ``/props`` ``build_info``) warns instead of
+    blocking: the user manages that server.
+    """
+    min_build = getattr(backend, "min_server_build", None)
+    if not min_build:
+        return
+    num = build_number(server_identity)
+    if num is None:
+        logger.warning(
+            "cannot determine the llama.cpp build from %r; backend %r requires "
+            "build >= %d — grounding coordinates may be wrong on an older server",
+            server_identity, backend.name, min_build,
+        )
+        return
+    if num < min_build:
+        raise ConfigError(
+            f"llama.cpp build {num} is too old for OCR backend {backend.name!r} "
+            f"(requires >= {min_build}: the grounding coordinate frame changed "
+            f"upstream — see dev/docs/build-9587-verification.md). "
+            f"Use a llama.cpp build >= {min_build} for the OCR server "
+            f"(llama.bin_dir, or the server behind --ocr-endpoint)."
+        )
+
+
 def run_ocr_pass(
     cfg: RunConfig, resolved: ResolvedInput, work_dir: str | Path
 ) -> tuple[list[PageImage], list[OcrPageResult]]:
@@ -189,6 +221,7 @@ def run_ocr_pass(
     cache = OcrCache(enabled=cfg.cache.enabled, refresh=cfg.cache.refresh)
     pdf_hash = sha256_bytes(resolved.pdf_bytes)
     model_identity, mmproj_identity, server_identity = _ocr_identities(cfg, cache)
+    _check_server_build(backend, server_identity)
     prompt = backend.prompt()
     # The cache key's sampling includes max_tokens (a hard generation guard, §8.6).
     sampling = {**backend.sampling(), "max_tokens": backend.max_tokens()}
@@ -815,6 +848,13 @@ def run(cfg: RunConfig) -> list[str]:
                 raise ConfigError(
                     f"llama-server binary not found (llama.bin_dir={cfg.llama.bin_dir!r})"
                 )
+            # Gate on the OCR backend's minimum build BEFORE loading the VLM —
+            # otherwise a too-old build wastes a full VLM model load just to be
+            # refused inside run_ocr_pass.
+            _check_server_build(
+                _build_ocr_backend(cfg),
+                llama_build_identity(cfg.llama.bin_dir, endpoint=cfg.ocr.endpoint),
+            )
             logger.info("concurrent mode: pre-launching VLM server alongside OCR")
             proto = get_vlm_backend(cfg.vlm.backend)
             vlm_mgr = LlamaServerManager(

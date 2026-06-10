@@ -194,6 +194,11 @@ class OcrBackend(ABC):
     name: str = "base"
     # Can this model locate figures from its own output? DeepSeek → True.
     supports_grounding: bool = False
+    # Minimum llama.cpp build this backend's pinned behavior was verified on;
+    # the pipeline refuses older spawned servers (model-side preprocessing —
+    # e.g. the grounding coordinate frame — changes across builds, DESIGN §2.2).
+    # None = no constraint.
+    min_server_build: int | None = None
 
     @abstractmethod
     def ocr_page(

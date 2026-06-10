@@ -12,11 +12,17 @@
 > `paper2llm`). It is written to be read entirely standalone — every concept,
 > dependency, and external quirk needed to build v1 is described here.
 >
-> **Last updated:** 2026-06-10 (§8.6/§9.6/§9.7: the llama.cpp **build identity**
-> is now OCR/VLM cache-key material — `llama-server --version`, or the
-> endpoint's `/props` `build_info` — so a llama.cpp upgrade busts the caches
-> instead of silently serving stale entries; the VLM cache value field was
-> renamed alongside (`VLM_VALUE_SCHEMA` 2). Earlier same day: §2.2/§22.2
+> **Last updated:** 2026-06-10 (§2.2/§8.2/§8.3: **re-pinned on llama.cpp build
+> ≥ 9587** — the grounding frame changed upstream to per-axis; `grid_to_norm`
+> now maps per-axis only and `DeepSeekOcrBackend.min_server_build = 9587` makes
+> the pipeline refuse older servers (verification + live calibration evidence
+> in `dev/docs/build-9587-verification.md`; fixtures re-captured on 9587; the
+> known loop page no longer loops there). Also: §8.6/§9.6/§9.7 the llama.cpp
+> **build identity** is now OCR/VLM cache-key material — `llama-server
+> --version`, or the endpoint's `/props` `build_info` — so a llama.cpp upgrade
+> busts the caches instead of silently serving stale entries; the VLM cache
+> value field was renamed alongside (`VLM_VALUE_SCHEMA` 2). Earlier same day:
+> §2.2/§22.2
 > DeepSeek-OCR-2 is now supported upstream — llama.cpp PR #20975 — adoption
 > gated on the TODO spike (research in `dev/docs/upstream-watch.md`); Gundam
 > confirmed — no tiling on build 9028, gundam ≡ `large`, frame
@@ -142,8 +148,8 @@ So **every** model `inscriber` uses (OCR and VLM) is configured as a
 - **Version note (updated 2026-06-10).** A successor, **DeepSeek-OCR-2**
   (official; arXiv 2601.20552 "Visual Causal Flow", deepseek-ai, ~27 Jan 2026,
   Apache-2.0, new DeepEncoder V2), is now **supported upstream**: llama.cpp
-  PR #20975 (merged 2026-05-29, post-dating the pinned build 9028) ships it
-  **with multi-tile dynamic-resolution preprocessing**, and GGUFs exist
+  PR #20975 (merged 2026-05-29 — already included in the pinned build 9587)
+  ships it **with multi-tile dynamic-resolution preprocessing**, and GGUFs exist
   (`sabafallah/DeepSeek-OCR-2-GGUF`). It is a **different backend, not a
   drop-in** — on the server path v2 *requires* `--chat-template deepseek-ocr
   --no-jinja` (v1 must NOT pass a template), plus `--flash-attn off` and its
@@ -186,19 +192,21 @@ So **every** model `inscriber` uses (OCR and VLM) is configured as a
     dense/multi-column pages. There is **no "standard" mode** (an earlier draft
     invented one). `inscriber` **defaults to `large`**, exposes the full ladder,
     and `gundam` as the dense-page opt-in (§7, §13). See §7 for the mode→render
-    mapping. ✅ **Confirmed (2026-06-10, `dev/docs/gundam-findings.md`): build
-    9028 does NOT tile** — every input is encoded as one slice (vision tokens
-    saturate at 421 for ≥1664 px long edge vs 273 at 1280), so `gundam`
+    mapping. ✅ **Confirmed (2026-06-10): neither build 9028 nor 9587 tiles**
+    (`dev/docs/gundam-findings.md`, `dev/docs/build-9587-verification.md`) —
+    every input is encoded as one slice (vision tokens saturate for ≥1664 px
+    long edge: 421 vs 273 at 1280 on 9028; 431 vs 283 on 9587), so `gundam`
     (rendering 1280, like `large`) is currently a **strict alias of `large`**,
-    and the grounding frame is the same padded-square at every input size.
-    Whether gundam should render ≥1664 to buy the larger encoding is a pending
-    decision (`TODO.md`).
+    and the grounding frame is the same at every input size. Whether gundam
+    should render ≥1664 to buy the larger encoding is a pending decision
+    (`TODO.md`).
 
-> ✅ **Grounding format & coordinate frame (CONFIRMED — M1a, build 9028;
-> evidence in `dev/docs/M1A-FINDINGS.md` Q2–Q3, locked in
+> ✅ **Grounding format & coordinate frame (CONFIRMED on build 9587 —
+> `dev/docs/build-9587-verification.md`; format originally established in M1a
+> on build 9028, `dev/docs/M1A-FINDINGS.md` Q2–Q3; locked in
 > `tests/test_deepseek_parser.py` golden fixtures).** Upstream DeepSeek-VL docs
 > describe inline `<|ref|>LABEL<|/ref|><|det|>[[x1, y1, x2, y2]]<|/det|>` spans,
-> but **this build emits a block layout list** instead — one region per block:
+> but **llama.cpp emits a block layout list** instead — one region per block:
 >
 > ```text
 > LABEL[[x1, y1, x2, y2]]
@@ -206,29 +214,32 @@ So **every** model `inscriber` uses (OCR and VLM) is configured as a
 > ```
 >
 > Labels observed: `title`, `sub_title` (text already carries `##`), `text`,
-> `image` (the figure-class label this build uses; no text of its own),
-> `image_caption` (wrapped `<center>…</center>`, immediately follows its
-> `image` block). Math arrives as inline `\(…\)` LaTeX.
+> `image` (the figure-class label; no text of its own), `image_caption`
+> (wrapped `<center>…</center>`, immediately follows its `image` block), and
+> `equation` for display equations. Math arrives as inline `\(…\)` LaTeX.
 >
-> Coordinates are on a **0–999 grid relative to the page image padded to a
-> square** of side `L = max(W, H)` with the short axis centered — **not** the
-> per-axis/original-image mapping reference implementations use (the two
-> disagree on non-square pages; the padded-square prediction matched the
-> calibration box to Δ≈5 grid units vs Δ≈31 for per-axis):
+> Coordinates are on a **0–999 per-axis grid relative to the original image**
+> (calibration box matched to Δ≈4–6 grid units on build 9587):
 >
 > ```text
-> pad = (L - dim) / 2     per axis
-> px  = grid / 999 * L - pad   →   norm = clamp(px / dim, 0, 1)
+> norm = clamp(grid / 999, 0, 1)     independently per axis
 > ```
 >
 > The mapping lives in `DeepSeekOcrBackend` (`grid_to_norm`), keeping
-> `bbox_norm` original-page-relative for the rest of the pipeline (§8.2).
-> **Gundam-size inputs are confirmed to use the SAME frame** — build 9028 does
-> not tile, and grid coords are render-size-invariant
-> (`dev/docs/gundam-findings.md`, golden-tested at a 1536×2048 render);
-> re-verify format + frame on any llama.cpp upgrade. High-res renders also
-> ground display equations as their own `equation` blocks (the parser keeps
-> unknown labels' text verbatim).
+> `bbox_norm` original-page-relative for the rest of the pipeline (§8.2). The
+> frame is **render-size-invariant** (identical grid coords at 1280–2560 px;
+> gundam-size inputs included — the build does not tile).
+>
+> ⚠️ **The frame is BUILD-SCOPED, hence the minimum-build gate.** Builds
+> ≤ 9028 padded the image to a square first (`pad = (L − dim)/2`; the M1a
+> finding, Δ≈5 vs Δ≈31 for per-axis on that build) — upstream preprocessing
+> changed in (9028, 9587]. A mismatched frame silently shifts every figure
+> crop on the padded axis, so `DeepSeekOcrBackend.min_server_build = 9587`
+> and the pipeline **refuses older spawned servers** (`_check_server_build`;
+> an endpoint whose `/props` lacks `build_info` warns instead — the user
+> manages that server). Re-verify format + frame on any llama.cpp upgrade —
+> the calibration page catches a frame change in seconds
+> (`dev/scripts/gundam_check.py`).
 
 ### 2.3 Gemma 4 (first VLM backend)
 
@@ -642,6 +653,11 @@ class OcrBackend(ABC):
     # capability: can this model locate figures from its own output?
     supports_grounding: bool = False   # DeepSeek-OCR → True; GLM/Paddle → False
 
+    # minimum llama.cpp build the pinned behavior was verified on; the pipeline
+    # refuses older spawned servers (model-side preprocessing — e.g. the
+    # grounding frame — changes across builds, §2.2). None = no constraint.
+    min_server_build: int | None = None
+
     def server_flags(self) -> list[str]: return []      # e.g. DRY/repeat-penalty
     def sampling(self) -> dict: return {"temperature": 0}  # OCR determinism
     # chat template is PATH-AWARE (§2.2): the value (or None) to use on the
@@ -670,7 +686,8 @@ so cropping (§8.4) is genuinely model-agnostic and the coordinate-frame mapping
 
 (The deferred text-OCR backends and their figure-detection problem are in §22.1.)
 
-- `name = "deepseek-ocr"`; `supports_grounding = True`; `sampling()` sets
+- `name = "deepseek-ocr"`; `supports_grounding = True`;
+  `min_server_build = 9587` (the grounding-frame gate, §2.2); `sampling()` sets
   `temperature: 0` + fixed seed and a `max_tokens` cap; `chat_template()` is
   path-aware (None on server; `"deepseek-ocr"` on the mtmd-cli fallback) (§2.2).
 - Prompt: `"<|grounding|>Convert the document to markdown."` (§2.2; grounding on,
@@ -683,13 +700,14 @@ so cropping (§8.4) is genuinely model-agnostic and the coordinate-frame mapping
      the text — §2.1).
   2. Split the output into ordered **`LABEL[[x1, y1, x2, y2]]` blocks**
      (`MARKER_RE`): each marker line is followed by that region's markdown text,
-     up to the next marker. Coords are on the **0–999 padded-square** grid.
+     up to the next marker. Coords are on the **0–999 per-axis** grid (§2.2).
   3. **Convert coordinates into the original-page `[0,1]` frame** via the
-     padded-square mapping (`grid_to_norm`, §2.2): `L = max(W, H)`,
-     `pad = (L − dim)/2` per axis, `px = grid/999 · L − pad`,
-     `norm = clamp(px/dim, 0, 1)`. The mapping is **encapsulated in the
-     backend** so `bbox_norm` is always original-page-relative (§8.2); for
-     **Gundam**, the frame is still unconfirmed (§2.2).
+     per-axis mapping (`grid_to_norm`, §2.2): `norm = clamp(grid/999, 0, 1)`
+     independently per axis. The mapping is **encapsulated in the backend** so
+     `bbox_norm` is always original-page-relative (§8.2). The frame is
+     render-size-invariant (Gundam-size included) but **build-scoped** —
+     builds ≤ 9028 used a padded-square frame, which is why the backend pins
+     `min_server_build = 9587` (§2.2).
   4. **Build clean markdown by _replacing_ each figure block, not blindly
      deleting it.** ⚠️ Critical: for **figure-class** blocks (`label` ∈
      {figure, image, picture, chart, diagram, plot}; this build emits `image`),
@@ -710,9 +728,11 @@ so cropping (§8.4) is genuinely model-agnostic and the coordinate-frame mapping
 > output was captured and committed as golden fixtures
 > (`tests/fixtures/deepseek_paper_p1_raw.txt`, `deepseek_calibration_raw.txt`),
 > `test_deepseek_parser.py` is pinned to them, and the coordinate frame was
-> **determined empirically as padded-square** via a calibration page with a box
-> at a known location (`dev/docs/M1A-FINDINGS.md` Q2). Re-run that discipline —
-> capture, compare, re-pin — on any llama.cpp or model upgrade (§22.2).
+> determined empirically via a calibration page with a box at a known location
+> (padded-square on build 9028, `dev/docs/M1A-FINDINGS.md` Q2; **re-determined
+> as per-axis on build 9587** and the fixtures re-captured,
+> `dev/docs/build-9587-verification.md` — the capture→compare→re-pin
+> discipline in action). Re-run it on any llama.cpp or model upgrade (§22.2).
 
 ### 8.4 Figure detection & cropping (`pdf/figures.py`, `pdf/crop.py`)
 
@@ -1375,7 +1395,11 @@ port = 0                               # 0 = auto-select a free port
 server_start_timeout = 120             # seconds to wait for /health
 ctx_size = 16384                       # -c; the single size knob (prompt +
                                        #   generation share it; 16384 leaves room
-                                       #   for the table pass, §9.7)
+                                       #   for the table pass, §9.7). Note: builds
+                                       #   >= 9587 cap each slot at the model's
+                                       #   training context (8192 for DeepSeek-OCR)
+                                       #   with a log line — harmless; the VLM is
+                                       #   what needs the headroom.
 
 [inference]
 mode = "sequential"                    # "sequential" | "concurrent"
@@ -1821,12 +1845,12 @@ is wired.
 - **DeepSeek-OCR-2** (arXiv 2601.20552, DeepEncoder V2 "Visual Causal Flow";
   +3.73% OmniDocBench, reading-order edit 0.085→0.057, repetition rate ~⅓
   lower, native multi-tile dynamic resolution) — **upstream support landed**
-  (llama.cpp PR #20975, merged 2026-05-29; GGUFs available; needs a build
-  newer than the pinned 9028). A likely upgrade, gated on the spike in
-  `TODO.md`: its grounding format + coordinate frame **under real tiling**
-  must be confirmed with the M1a calibration discipline, and it needs a new
-  `deepseek-ocr-2` backend (different server template/flags). Research
-  record: `dev/docs/upstream-watch.md`.
+  (llama.cpp PR #20975, merged 2026-05-29; GGUFs available; **the pinned
+  build 9587 already includes it**, so no build upgrade is needed). A likely
+  upgrade, gated on the spike in `TODO.md`: its grounding format + coordinate
+  frame **under real tiling** must be confirmed with the M1a calibration
+  discipline, and it needs a new `deepseek-ocr-2` backend (different server
+  template/flags). Research record: `dev/docs/upstream-watch.md`.
 - **Table reconstruction across page breaks** (§10.3) — currently a documented
   limitation.
 - **Batch mode** — process a directory of PDFs reusing a single warm server.
@@ -1943,10 +1967,9 @@ image_caption[[300, 625, 700, 645]]
 ```
 
 **3. Parse + map coords (§8.3).** Four blocks; one figure-class block (`image`),
-coords `[300, 240, 760, 612]` on the 0–999 **padded-square** grid. With
-`W=905, H=1280`: `L = 1280`, `pad_x = (1280−905)/2 = 187.5`, `pad_y = 0`, so
-`px = grid/999 · 1280 − 187.5` → pixels `x=[197, 786]`, `y=[307, 784]` →
-`bbox_norm ≈ (0.218, 0.240, 0.869, 0.613)`. The `image` block is **replaced** by
+coords `[300, 240, 760, 612]` on the 0–999 **per-axis** grid, so
+`bbox_norm = grid/999 ≈ (0.300, 0.240, 0.761, 0.613)` — no padding terms
+(§2.2). The `image` block is **replaced** by
 a placeholder (not deleted); the following `image_caption` block supplies
 `Region.text = "<center>Figure 1: Training pipeline overview.</center>"` while
 its text also stays in the markdown. Resulting `OcrPageResult.markdown`:

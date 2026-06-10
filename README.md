@@ -59,8 +59,13 @@ Download a prebuilt release from
 [github.com/ggml-org/llama.cpp/releases/latest](https://github.com/ggml-org/llama.cpp/releases/latest)
 — pick the variant matching your GPU backend (CUDA / Vulkan / Metal / CPU) — or
 build from source. `inscriber` only needs the directory containing
-`llama-server` (`llama-server.exe` on Windows). Developed and tested against
-build 9028; any recent build should work.
+`llama-server` (`llama-server.exe` on Windows).
+
+> ⚠️ **Use build 9587 or newer.** llama.cpp's model-side preprocessing
+> changes between builds — DeepSeek-OCR's grounding coordinate frame changed
+> at some point after build 9028 — so `inscriber` is pinned to the frame of
+> build 9587 (the verified one) and **refuses to run OCR against older
+> builds** rather than silently misplace figure crops.
 
 ### 2. Models
 

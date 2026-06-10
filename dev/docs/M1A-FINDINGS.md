@@ -62,6 +62,9 @@
   ```
 - Gundam frame: **resolved 2026-06-10** — no tiling on this build; the same
   padded-square frame applies at every input size (`gundam-findings.md`).
+- ⚠️ **Superseded (build ≥ 9587):** everything above is 9028-specific — newer
+  builds emit **per-axis** coords (the "reference prediction" above!) and the
+  project re-pinned accordingly (`build-9587-verification.md`).
 
 ## ⚠️ Q3 — Grounding OUTPUT FORMAT (not `<|ref|>`/`<|det|>`)
 

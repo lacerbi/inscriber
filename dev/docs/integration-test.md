@@ -6,28 +6,34 @@ on GPU-less runners — see `.github/workflows/ci.yml`). Run it before a release
 
 ## Prerequisites
 
-- A llama.cpp build (`llama-server` + `llama-mtmd-cli`). v1 was validated on
-  **build 9028 (`d6e7b033a`)**, CUDA, on an RTX 4060 Laptop (8 GB VRAM).
+- A llama.cpp build (`llama-server` + `llama-mtmd-cli`), **build 9587 or
+  newer** — older builds are refused for OCR (`min_server_build`; the
+  grounding frame changed upstream, DESIGN §2.2). v1 was validated on
+  **build 9587 (`d2e22ed97`)**, CUDA, on an RTX 4060 Laptop (8 GB VRAM)
+  (originally on 9028 — `dev/docs/build-9587-verification.md` records the
+  re-validation).
 - Two `(model, mmproj)` GGUF pairs:
   - **OCR:** DeepSeek-OCR — `deepseek-ocr-bf16.gguf` + `mmproj-deepseek-ocr-bf16.gguf`
     (BF16 recommended over Q4_K_M; DESIGN §2.2). A Q8_0 pair also works.
   - **VLM:** Gemma 4 E4B — `gemma-4-E4B-it-Q4_K_M.gguf` + `mmproj-BF16.gguf`.
 - A known sample PDF (e.g. `tests/fixtures/sample_paper.pdf`, or a real arXiv PDF).
 
-See `dev/docs/M1A-FINDINGS.md` for the pinned, empirically-confirmed facts (server HTTP
-path works; image-before-text required; padded-square coordinate frame; the
-`LABEL[[bbox]]` grounding format).
+See `dev/docs/M1A-FINDINGS.md` + `dev/docs/build-9587-verification.md` for the
+pinned, empirically-confirmed facts (server HTTP path works; image-before-text
+required; per-axis coordinate frame on ≥9587; the `LABEL[[bbox]]` grounding
+format).
 
 ## Steps
 
 Set common flags (adjust paths):
 
 ```
-BIN=C:/Users/luigi/llms
-OCR_M=$BIN/models/deepseek-ocr-bf16.gguf
-OCR_P=$BIN/models/mmproj-deepseek-ocr-bf16.gguf
-VLM_M=$BIN/models/gemma-4-E4B-it-Q4_K_M.gguf
-VLM_P=$BIN/models/mmproj-BF16.gguf
+BIN=C:/Users/luigi/llms/new          # must hold llama.cpp >= 9587
+MODELS=C:/Users/luigi/llms/models
+OCR_M=$MODELS/deepseek-ocr-bf16.gguf
+OCR_P=$MODELS/mmproj-deepseek-ocr-bf16.gguf
+VLM_M=$MODELS/gemma-4-E4B-it-Q4_K_M.gguf
+VLM_P=$MODELS/gemma-4-E4B-it-mmproj-BF16.gguf
 ```
 
 1. **Version + help**
@@ -84,7 +90,8 @@ VLM_P=$BIN/models/mmproj-BF16.gguf
 - DeepSeek-OCR labels the title as `sub_title`/`title` (often `##`), so a doc with
   no `# ` H1 yields title `Untitled_Paper` in split headers (faithful to the ported
   `extractTitle`).
-- `llama-mtmd-cli` fallback currently crashes on build 9028 (server HTTP path is the
-  shipped path).
-- Cross-page tables/equations and the Gundam coordinate frame are not fully handled
-  (DESIGN §10.3, §2.2).
+- `llama-mtmd-cli` fallback crashed when last tested (build 9028; untested since —
+  the server HTTP path is the shipped path).
+- Cross-page tables/equations are not fully handled (DESIGN §10.3). (The Gundam
+  coordinate-frame question is resolved: same per-axis frame at every render size,
+  DESIGN §2.2.)

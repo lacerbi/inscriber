@@ -26,7 +26,7 @@ def hermetic_cache(tmp_path, monkeypatch):
     monkeypatch.setattr(cache_mod, "default_cache_dir", lambda: tmp_path / "ocrcache")
     monkeypatch.setattr(cache_mod, "default_vlm_cache_dir", lambda: tmp_path / "vlmcache")
     # Cache keys probe the llama.cpp build identity; no real binary in tests.
-    monkeypatch.setattr(pipeline, "llama_build_identity", lambda *a, **k: "version: 0 (test)")
+    monkeypatch.setattr(pipeline, "llama_build_identity", lambda *a, **k: "version: 9587 (test)")
 
 
 def _dummy_models(tmp_path) -> dict:
@@ -161,6 +161,32 @@ def test_no_cache_writes_nothing_to_cache_dir(tmp_path, monkeypatch, hermetic_ca
     # --no-cache: neither OCR/VLM entries nor the hash sidecar are written.
     assert not (tmp_path / "ocrcache").exists()
     assert not (tmp_path / "vlmcache").exists()
+
+
+def test_old_llama_build_is_refused(tmp_path, monkeypatch, hermetic_cache):
+    # DeepSeek-OCR pins min_server_build = 9587 (the grounding coordinate frame
+    # changed upstream, dev/docs/build-9587-verification.md): an older server
+    # must be refused up front, not silently mis-crop every figure.
+    from inscriber.config import ConfigError
+
+    _mock_inference(monkeypatch)
+    monkeypatch.setattr(
+        pipeline, "llama_build_identity", lambda *a, **k: "version: 9028 (d6e7b033a)"
+    )
+    cfg = _base_cfg(tmp_path, _dummy_models(tmp_path), tmp_path / "out")
+    with pytest.raises(ConfigError, match="too old"):
+        pipeline.run(cfg)
+
+
+def test_unknown_build_warns_but_runs(tmp_path, monkeypatch, hermetic_cache):
+    # An endpoint without /props build_info yields "unknown" — the gate warns
+    # (the user manages that server) but must not block the run.
+    _mock_inference(monkeypatch)
+    monkeypatch.setattr(pipeline, "llama_build_identity", lambda *a, **k: "unknown")
+    out = tmp_path / "out"
+    cfg = _base_cfg(tmp_path, _dummy_models(tmp_path), out)
+    pipeline.run(cfg)
+    assert (out / "sample_paper.md").is_file()
 
 
 def test_split_files_get_correct_sections(tmp_path):

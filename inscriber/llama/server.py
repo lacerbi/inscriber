@@ -143,6 +143,20 @@ def llama_build_identity(bin_dir: str, endpoint: str = "") -> str:
     return _BUILD_ID_MEM[mem_key]
 
 
+def build_number(identity: str) -> int | None:
+    """Numeric llama.cpp build from a :func:`llama_build_identity` string.
+
+    Handles both forms: ``"version: 9587 (d2e22ed97)"`` (the ``--version``
+    probe) and ``"b9587-d2e22ed97"`` (an endpoint's ``/props`` ``build_info``).
+    Returns ``None`` when unparseable (e.g. the ``"unknown"`` endpoint
+    fallback, or a nonstandard ``build_info`` shape) — callers decide whether
+    that warns or blocks; the pipeline's min-build gate deliberately degrades
+    to a warning for servers it cannot date.
+    """
+    m = re.search(r"version:\s*(\d+)", identity) or re.match(r"b(\d+)\b", identity)
+    return int(m.group(1)) if m else None
+
+
 def _free_port(host: str) -> int:
     """Probe a free ephemeral port (DESIGN §5.3).
 
@@ -169,7 +183,7 @@ def build_launch_args(exe: Path, spec: ServerSpec, port: int) -> list[str]:
         str(spec.ctx_size),
     ]
     # n_gpu_layers == "auto" (the default) → omit -ngl entirely and let llama.cpp
-    # use its own default (which is GPU auto-fit on modern builds, e.g. 9028). This
+    # use its own default (which is GPU auto-fit on modern builds, e.g. 9587). This
     # never passes a symbolic token, so it can't break arg-parsing on any build.
     # "all" or an explicit integer are passed through verbatim.
     if str(spec.n_gpu_layers).strip().lower() != "auto":

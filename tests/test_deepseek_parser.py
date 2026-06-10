@@ -1,9 +1,11 @@
-"""M1b highest-value test (DESIGN §8.3, §17): the DeepSeek-OCR grounding parser +
-coordinate mapping, pinned to **real captured output** from the M1a spike.
+"""Highest-value test (DESIGN §8.3, §17): the DeepSeek-OCR grounding parser +
+coordinate mapping, pinned to **real captured output**.
 
 The single-pass grounding design hinges on exact parsing; these are golden tests
-against committed real fixtures (`tests/fixtures/deepseek_*_raw.txt`) and the
-M1a-confirmed **padded-square** coordinate frame.
+against committed real fixtures (`tests/fixtures/deepseek_*_raw.txt`, captured on
+llama.cpp build 9587) and the verified **per-axis** coordinate frame
+(dev/docs/build-9587-verification.md; the older padded-square frame of build
+9028 is no longer supported — `min_server_build` gates it).
 """
 
 from __future__ import annotations
@@ -38,28 +40,24 @@ def _page_for(pdf_name: str) -> PageImage:
 
 
 # --------------------------------------------------------------------------- #
-# Coordinate frame (pure) — the M1a padded-square mapping
+# Coordinate frame (pure) — the per-axis mapping verified on build 9587
 # --------------------------------------------------------------------------- #
 
 
-def test_grid_to_norm_padded_square_calibration():
-    # calibration page renders 960x1280; figure emitted image[[305,245,690,653]].
-    norm = grid_to_norm((305, 245, 690, 653), 960, 1280)
-    assert norm[0] == pytest.approx(0.2404, abs=1e-3)
-    assert norm[1] == pytest.approx(0.2453, abs=1e-3)
-    assert norm[2] == pytest.approx(0.7542, abs=1e-3)
-    assert norm[3] == pytest.approx(0.6537, abs=1e-3)
-
-
-def test_grid_to_norm_long_axis_has_no_padding():
-    # On the long axis, padded-square == per-axis (pad=0): grid/999 directly.
-    _, y0, _, y1 = grid_to_norm((0, 250, 0, 750), 960, 1280)
-    assert y0 == pytest.approx(250 / 999, abs=1e-4)
-    assert y1 == pytest.approx(750 / 999, abs=1e-4)
+def test_grid_to_norm_per_axis_calibration():
+    # Build 9587 emitted image[[242,243,753,653]] for the calibration box whose
+    # true position is (0.25, 0.25, 0.75, 0.65) — per-axis grid/999, no padding.
+    norm = grid_to_norm((242, 243, 753, 653))
+    assert norm[0] == pytest.approx(242 / 999, abs=1e-6)
+    assert norm[1] == pytest.approx(243 / 999, abs=1e-6)
+    assert norm[2] == pytest.approx(753 / 999, abs=1e-6)
+    assert norm[3] == pytest.approx(653 / 999, abs=1e-6)
+    for got, want in zip(norm, (0.25, 0.25, 0.75, 0.65), strict=True):
+        assert got == pytest.approx(want, abs=0.01)
 
 
 def test_grid_to_norm_clamps():
-    norm = grid_to_norm((0, 0, 999, 999), 960, 1280)
+    norm = grid_to_norm((0, 0, 999, 999))
     assert all(0.0 <= v <= 1.0 for v in norm)
 
 
@@ -81,21 +79,21 @@ def test_parse_calibration_fixture():
     assert figs[0].label == "image"
     # caption pulled from the following image_caption block:
     assert figs[0].text == "<center>Figure 1: calibration box. </center>"
-    # figure bbox uses padded-square mapping:
-    assert figs[0].bbox_norm[0] == pytest.approx(0.2404, abs=1e-3)
+    # figure bbox uses the per-axis mapping (raw emits image[[242,243,753,653]]):
+    assert figs[0].bbox_norm[0] == pytest.approx(242 / 999, abs=1e-3)
 
     assert "⟦INSCRIBER_FIG:fig_p1_1⟧" in res.markdown
     assert "Calibration Page" in res.markdown
     # markers are stripped from the markdown:
     assert "image[[" not in res.markdown
-    assert "[[305" not in res.markdown
+    assert "[[242" not in res.markdown
 
 
 def test_parse_calibration_gundam2048_fixture_same_global_frame():
     """Real output captured at a 1536x2048 render — a gundam-sized input
-    (dev/docs/gundam-findings.md): build 9028 does NOT tile, so the grounding
-    frame is STILL the padded square at every input size. Grid coords are
-    render-size-invariant and grid_to_norm recovers the true calibration box
+    (dev/docs/build-9587-verification.md): build 9587 does NOT tile, so the
+    grounding frame is the SAME per-axis frame at every input size. Grid coords
+    are render-size-invariant and grid_to_norm recovers the true calibration box
     ((150,200,450,520)pt on the 600x800pt page → (0.25, 0.25, 0.75, 0.65))."""
     raw = (FIXTURES / "deepseek_calibration_gundam2048_raw.txt").read_text(encoding="utf-8")
     page = PageImage(page_number=1, png_bytes=b"", width_px=1536, height_px=2048)

@@ -5,6 +5,11 @@
 > DeepSeek-OCR v1, and DeepSeek-OCR 2 — and what any llama.cpp upgrade forces
 > on this repo. Action items live in `TODO.md`. Re-check this page's facts
 > before acting on them; upstream was moving **daily** when researched.
+>
+> **Update (later the same day):** the pin moved to **build 9587** — which
+> includes DeepSeek-OCR-2 support and DID change v1's grounding frame, exactly
+> as §3 warned (`dev/docs/build-9587-verification.md`). 9028-relative gating
+> statements below are history; §3's cache-correctness gap is closed.
 
 ## 1. v1 Gundam tiling: deliberately cut from #17400; follow-up in limbo
 
@@ -40,7 +45,7 @@ waiting — if upstream tiling lands, `gundam` becomes real tiling and the
 [PR #20975](https://github.com/ggml-org/llama.cpp/pull/20975) (also sfallah)
 added DeepSeek-OCR-2 — this **invalidated** DESIGN's earlier "no llama.cpp
 path for v2" claim (§2.2/§22.2 updated 2026-06-10). Needs a build newer than
-the pinned 9028.
+the pinned 9028. *(Satisfied since the same-day re-pin to 9587.)*
 
 **Paper claims** ([arXiv 2601.20552](https://arxiv.org/pdf/2601.20552),
 DeepEncoder V2 "visual causal flow" — the encoder selects/orders visual tokens
@@ -94,8 +99,12 @@ markdown.
   2026-05-20) already changed **v1's image preprocessing / resize padding** —
   outputs and grounding coords may shift on a newer build. The M1a re-capture
   discipline applies: capture, compare, re-pin fixtures (DESIGN §22.2).
-- ⚠️ **Cache-correctness gap surfaced by this:** the OCR/VLM cache keys do NOT
+  *(Confirmed the same day: build 9587 measures **per-axis**, not
+  padded-square — `dev/docs/build-9587-verification.md`; this PR is the
+  likely cause, unbisected.)*
+- ⚠️ **Cache-correctness gap surfaced by this:** the OCR/VLM cache keys did NOT
   include any llama.cpp build identity — an upgrade that changes preprocessing
   changes model outputs *without busting the cache* (stale entries served
-  silently). Tracked as a code debt in `TODO.md`; the interim rule is
-  **`--refresh` after any llama.cpp upgrade**.
+  silently). *(**Closed 2026-06-10**: `llama_build_identity` is now OCR/VLM
+  key material — DESIGN §8.6/§9.6; the interim `--refresh`-after-upgrade rule
+  is obsolete.)*

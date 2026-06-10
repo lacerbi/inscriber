@@ -1,6 +1,6 @@
-title[[148, 73, 423, 109]]
+sub_title[[93, 72, 396, 108]]
 Calibration Page  
 
-image[[305, 245, 690, 650]]
-image_caption[[309, 664, 477, 685]]
+image[[244, 244, 751, 651]]
+image_caption[[246, 663, 469, 684]]
 <center>Figure 1: calibration box. </center>

@@ -7,6 +7,11 @@
 > **padded-square global frame** M1a pinned for `large`. Evidence captured by
 > `dev/scripts/gundam_check.py`; golden fixture
 > `tests/fixtures/deepseek_calibration_gundam2048_raw.txt`.
+>
+> ⚠️ **9028-scoped.** On build ≥ 9587 the frame is **per-axis** (still no
+> tiling, still render-size-invariant) and the fixture named above was
+> re-captured with 9587 values — this file's measured numbers live on only in
+> the table below and git history (`build-9587-verification.md`).
 
 ## Environment
 

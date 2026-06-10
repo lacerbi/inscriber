@@ -8,30 +8,33 @@ Legend: `[ ]` todo · `[!]` blocked.
 
 ## Pending real-hardware verifications
 
-- [ ] **Verify llama.cpp build 9587 before trusting real runs** — the machine's
-      `config.toml` now points at build 9587 (`llms/new`, d2e22ed97); the
-      pinned-verified build is 9028 (`llms/` root). Apply the standing
-      upgrade discipline (DESIGN §2.2/§8.3: capture → compare → re-pin):
-      (i) `gundam_check.py --bin-dir .../llms/new` — grounding format still
-      parses, calibration box still padded-square (`[312, 250, 687, 649]`),
-      and whether 9587 now **tiles** at ≥1664 px (mtmd token counts in the
-      server log; 9587 post-dates the DeepSeek-OCR-2 merge and ~550 builds of
-      preprocessing churn);
-      (ii) `m1b_check.py --bin-dir .../llms/new --no-cache` — real-page output
-      vs the golden fixtures (`deepseek_paper_p1_raw.txt`);
-      (iii) `verify_thinking_spike.py` — Gemma `enable_thinking` still toggles;
-      (iv) the known-loop page (PriorGuide p. 5, `gundam_check.py --paper`)
-      — loop behavior may change either way.
-      Cache safety is already handled (build identity became key material
-      2026-06-10). On pass, update the build-9028 pins in DESIGN §2.x /
-      README / AGENTS; on regressions, point `bin_dir` back to `llms/`.
-- [ ] **Gundam render target** (`dev/docs/gundam-findings.md`): build 9028
-      does not tile, so gundam is currently a strict alias of `large` (both
-      render 1280). Rendering ≥1664 buys the saturated 421-token visual
-      encoding (vs 273 at 1280; ~3× encode time). Decide whether
+- [x] ~~**Verify llama.cpp build 9587 before trusting real runs**~~ — done
+      2026-06-10 (`dev/docs/build-9587-verification.md`). **FAILED as a
+      drop-in: the grounding coordinate frame changed from padded-square to
+      per-axis** (calibration box `[242, 243, 753, 653]` ≈ the per-axis
+      prediction; Δ≈37 off padded-square) → `grid_to_norm` silently shifts
+      every figure crop. Passed everything else: format parses, still no
+      tiling (283/431-token single-slice saturation), thinking kwarg toggles,
+      m1b + the new build-identity cache keys work live — and the PriorGuide
+      p. 5 loop is GONE (37 s, `finish_reason: stop`, lost content
+      recovered). v1 stays pinned on 9028 (`llms/` root); adoption is the
+      item below.
+- [x] ~~**Adopt llama.cpp ≥9587: per-axis grounding frame decision**~~ — done
+      2026-06-10: **re-pinned on ≥ 9587, single frame** (no dual-frame
+      maintenance). `grid_to_norm` is per-axis only;
+      `DeepSeekOcrBackend.min_server_build = 9587` and the pipeline's
+      `_check_server_build` refuse older spawned servers (an endpoint without
+      `/props` `build_info` warns instead). Golden fixtures re-captured on
+      9587; verified live end-to-end (calibration crop within 1% of ground
+      truth). Evidence: `dev/docs/build-9587-verification.md`.
+- [ ] **Gundam render target** (`dev/docs/gundam-findings.md`,
+      `dev/docs/build-9587-verification.md`): neither build 9028 nor 9587
+      tiles, so gundam is currently a strict alias of `large` (both render
+      1280). Rendering ≥1664 buys the saturated visual encoding (431 vs 283
+      prompt tokens on 9587; ~3× encode time). Decide whether
       `ResolutionMode.GUNDAM.long_edge_px` becomes 2048 — validate OCR quality
       on dense pages first. (The coordinate frame itself is resolved:
-      padded-square at every input size, golden-tested.) Consider simply
+      per-axis on ≥9587 at every input size, golden-tested.) Consider simply
       waiting for upstream v1 tiling instead
       (`dev/docs/upstream-watch.md` §1) — real tiling would change the
       question's shape entirely.
@@ -42,6 +45,9 @@ Legend: `[ ]` todo · `[!]` blocked.
       don't cache the page (DESIGN §16 already promises the logging; mirror the
       table pass's truncation handling). Note `--refresh` can't fix such a page
       (deterministic); suggest a different `--ocr-resolution` in the warning.
+      (That specific page no longer loops on build 9587 —
+      `dev/docs/build-9587-verification.md` §4 — but the detection gap remains
+      for whatever page loops next.)
 
 ## Table-restructuring pass (DESIGN §9.7)
 
@@ -63,10 +69,11 @@ Legend: `[ ]` todo · `[!]` blocked.
       dynamic resolution. Gated on: (i) grounding format + coordinate frame
       under tiling — full M1a calibration discipline, `gundam_check.py`
       reusable; (ii) loop check on the known-bad page (PriorGuide p. 5);
-      (iii) real-page format capture → fixtures. Requires a build newer than
-      pinned 9028 and a new `deepseek-ocr-2` backend (different server
-      template/flags — `--chat-template deepseek-ocr --no-jinja`,
-      `--flash-attn off`, its own DRY tuning); zero pipeline changes (§8).
+      (iii) real-page format capture → fixtures. The pinned build 9587
+      already includes v2 support (no build upgrade needed); requires a new
+      `deepseek-ocr-2` backend (different server template/flags —
+      `--chat-template deepseek-ocr --no-jinja`, `--flash-attn off`, its own
+      DRY tuning); zero pipeline changes (§8).
 - [ ] **v1 Gundam tiling** — descoped from #17400; the follow-up PR #24300 was
       closed 2026-06-09 in favor of a generic batching API (PR #24384, WIP
       draft). Watch #24384 + the DSOCR re-adaptation on top of it; stall risk
@@ -76,11 +83,13 @@ Legend: `[ ]` todo · `[!]` blocked.
 ## Planned features
 
 - [ ] **BibTeX `auto` mode** — classify citability (provenance heuristics +
-      a cached LLM probe) → source chain (arXiv-by-ID → Semantic Scholar →
-      local best-effort entry). Network intent comes from the existing
-      `net.offline` knob (`--offline` ⇒ local best-effort only). Full design
-      + phased roadmap (B0–B4): `PLAN-bibtex-auto.md`. Subsumes the arXiv
-      half of the alternate-sources item below.
+      a cached LLM probe) → source chain (Semantic Scholar by arXiv ID,
+      preferring the published version when one exists → arXiv export API
+      fallback → S2 title search → local best-effort entry). Network intent
+      comes from the existing `net.offline` knob (`--offline` ⇒ local
+      best-effort only). Full design + phased roadmap (B0–B4):
+      `PLAN-bibtex-auto.md`. Subsumes the arXiv half of the
+      alternate-sources item below.
 - [ ] **Publish to PyPI** — the name `inscriber` was verified available
       (DESIGN §18) but nothing is published yet; README documents source
       install until then.
