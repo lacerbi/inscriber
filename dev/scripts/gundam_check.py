@@ -15,7 +15,7 @@ Two facts to establish on the pinned build (follow-up to M1A-FINDINGS Q2):
 
 2. Optionally re-runs a real paper page at a larger render (``--paper`` /
    ``--paper-page`` / ``--paper-target``) — e.g. the page that looped at 1280
-   (dev/docs/equation-fidelity-findings.md) — to see whether a different input
+   (dev/notes/2026-06-10-equation-fidelity-findings.md) — to see whether a different input
    size escapes the loop.
 
 Outputs land in out-gundam/ (gitignored): raw model outputs + the llama-server
@@ -125,7 +125,8 @@ def main() -> int:
     p.add_argument("--req-timeout", type=float, default=900.0)
     p.add_argument("--targets", default="1280,1664,2048,2560")
     p.add_argument("--paper", default=None, help="optional real PDF for the loop check")
-    p.add_argument("--paper-page", type=int, default=5)
+    p.add_argument("--paper-page", default="5",
+                   help="page number, or comma-separated list (e.g. 3,5,22)")
     p.add_argument("--paper-target", type=int, default=2048)
     args = p.parse_args()
 
@@ -143,10 +144,11 @@ def main() -> int:
     ]
     if args.paper:
         pdf = Path(args.paper).expanduser().read_bytes()
-        jobs.append(
-            (f"paper_p{args.paper_page}@{args.paper_target}",
-             render(pdf, args.paper_page, args.paper_target))
-        )
+        for pg in [int(x) for x in str(args.paper_page).split(",") if x.strip()]:
+            jobs.append(
+                (f"paper_p{pg}@{args.paper_target}",
+                 render(pdf, pg, args.paper_target))
+            )
 
     mgr = LlamaServerManager(args.bin_dir, server_start_timeout=args.timeout, log_dir=OUT)
     spec = ServerSpec(
