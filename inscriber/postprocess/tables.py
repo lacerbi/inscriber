@@ -3,7 +3,7 @@
 DeepSeek-OCR emits tables as degenerate HTML — ``<table>…</table>`` with most cell
 boundaries missing, so adjacent cells concatenate. The values are all present but
 the grid is gone and is not post-fixable. The fix (validated in
-``dev/docs/table-reconstruction-findings.md``): for each blob, ask the VLM to
+``dev/notes/2026-06-10-table-reconstruction-findings.md``): for each blob, ask the VLM to
 **restructure** it from the page image — the blob supplies the values, the image
 supplies the layout, and the rest of the page's text supplies correct spellings
 for merged labels. Low-risk *structuring*, not from-scratch re-OCR.
@@ -26,7 +26,7 @@ _TABLE_OPEN_RE = re.compile(r"<table\b", re.IGNORECASE)
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
 _CODE_FENCE_RE = re.compile(r"^```[A-Za-z]*\s*\n(?P<body>.*?)\n?```\s*$", re.DOTALL)
 
-# The validated prompt, verbatim from dev/docs/table-reconstruction-findings.md.
+# The validated prompt, verbatim from dev/notes/2026-06-10-table-reconstruction-findings.md.
 # The page image is sent BEFORE this text (image_first=True), sampling temperature 0.
 TABLE_PROMPT_TEMPLATE = """You are reconstructing ONE table from a scientific paper as clean GitHub-flavored Markdown.
 

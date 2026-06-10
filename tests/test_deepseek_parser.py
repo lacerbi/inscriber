@@ -4,7 +4,7 @@ coordinate mapping, pinned to **real captured output**.
 The single-pass grounding design hinges on exact parsing; these are golden tests
 against committed real fixtures (`tests/fixtures/deepseek_*_raw.txt`, captured on
 llama.cpp build 9587) and the verified **per-axis** coordinate frame
-(dev/docs/build-9587-verification.md; the older padded-square frame of build
+(dev/notes/2026-06-10-build-9587-verification.md; the older padded-square frame of build
 9028 is no longer supported — `min_server_build` gates it).
 """
 
@@ -91,7 +91,7 @@ def test_parse_calibration_fixture():
 
 def test_parse_calibration_gundam2048_fixture_same_global_frame():
     """Real output captured at a 1536x2048 render — a gundam-sized input
-    (dev/docs/build-9587-verification.md): build 9587 does NOT tile, so the
+    (dev/notes/2026-06-10-build-9587-verification.md): build 9587 does NOT tile, so the
     grounding frame is the SAME per-axis frame at every input size. Grid coords
     are render-size-invariant and grid_to_norm recovers the true calibration box
     ((150,200,450,520)pt on the 600x800pt page → (0.25, 0.25, 0.75, 0.65))."""

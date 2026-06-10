@@ -162,7 +162,7 @@ def main() -> int:
         print(f"  saved {out.name} ({len(raw)} chars)")
 
     verdict(raws[0], args.resolution)  # calibration page drives the frame check
-    print(f"\nNEXT: record the chosen path ({path_used}) and frame in dev/docs/M1A-FINDINGS.md, "
+    print(f"\nNEXT: record the chosen path ({path_used}) and frame in dev/notes/2026-06-09-m1a-findings.md, "
           f"then lock test_deepseek_parser.py to these fixtures.")
     return 0
 

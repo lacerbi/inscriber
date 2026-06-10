@@ -1,4 +1,6 @@
-# Gundam-mode findings — coordinate frame & tiling (2026-06-10)
+# Gundam-mode findings — coordinate frame & tiling
+
+> **Date:** 2026-06-10 · **Status:** superseded in part — no-tiling was re-confirmed on ≥9587, but the padded-square frame measured here is build-9028-scoped (per-axis on ≥9587: `2026-06-10-build-9587-verification.md`).
 
 > Closes the TODO item *"Gundam coordinate frame: determine empirically whether
 > grounding coords are relative to the 1024 global view or the tiles."*
@@ -11,11 +13,11 @@
 > ⚠️ **9028-scoped.** On build ≥ 9587 the frame is **per-axis** (still no
 > tiling, still render-size-invariant) and the fixture named above was
 > re-captured with 9587 values — this file's measured numbers live on only in
-> the table below and git history (`build-9587-verification.md`).
+> the table below and git history (`2026-06-10-build-9587-verification.md`).
 
 ## Environment
 
-Same pinned setup as `M1A-FINDINGS.md` (build 9028, RTX 4060 8 GB) with
+Same pinned setup as `2026-06-09-m1a-findings.md` (build 9028, RTX 4060 8 GB) with
 **BF16** weights, production prompt/sampling/DRY flags via
 `DeepSeekOcrBackend`, ctx 16384, `max_tokens` 8192.
 
@@ -73,7 +75,7 @@ Gundam implementation in a follow-up PR"), and that follow-up (#24300) was
 closed unmerged on 2026-06-09 in favor of a generic batching API (#24384, WIP).
 So the no-tiling result above is the intended shipped state, with real tiling
 pending upstream. Full picture — including DeepSeek-OCR 2, which ships *with*
-tiling — in `upstream-watch.md`.
+tiling — in `2026-06-10-upstream-watch.md`.
 
 ## Loop check (follow-up to equation-fidelity-findings)
 

@@ -2,14 +2,14 @@
 
 Concrete, actionable pending items — collected here so they don't get lost
 inside spec prose. Longer-horizon feature work stays in `DESIGN.md` §22; the
-empirical evidence records cited below live in `dev/docs/`.
+empirical evidence records cited below live in `dev/notes/`.
 
 Legend: `[ ]` todo · `[!]` blocked.
 
 ## Pending real-hardware verifications
 
 - [x] ~~**Verify llama.cpp build 9587 before trusting real runs**~~ — done
-      2026-06-10 (`dev/docs/build-9587-verification.md`). **FAILED as a
+      2026-06-10 (`dev/notes/2026-06-10-build-9587-verification.md`). **FAILED as a
       drop-in: the grounding coordinate frame changed from padded-square to
       per-axis** (calibration box `[242, 243, 753, 653]` ≈ the per-axis
       prediction; Δ≈37 off padded-square) → `grid_to_norm` silently shifts
@@ -26,29 +26,29 @@ Legend: `[ ]` todo · `[!]` blocked.
       `_check_server_build` refuse older spawned servers (an endpoint without
       `/props` `build_info` warns instead). Golden fixtures re-captured on
       9587; verified live end-to-end (calibration crop within 1% of ground
-      truth). Evidence: `dev/docs/build-9587-verification.md`.
-- [ ] **Gundam render target** (`dev/docs/gundam-findings.md`,
-      `dev/docs/build-9587-verification.md`): neither build 9028 nor 9587
+      truth). Evidence: `dev/notes/2026-06-10-build-9587-verification.md`.
+- [ ] **Gundam render target** (`dev/notes/2026-06-10-gundam-findings.md`,
+      `dev/notes/2026-06-10-build-9587-verification.md`): neither build 9028 nor 9587
       tiles, so gundam is currently a strict alias of `large` (both render
       1280). Rendering ≥1664 buys the saturated visual encoding (431 vs 283
       prompt tokens on 9587; ~3× encode time). Decide whether
       `ResolutionMode.GUNDAM.long_edge_px` becomes 2048 — validate OCR quality
       on dense pages first; concrete probes now exist in
-      `dev/docs/e2e-quality-findings.md` (equation-tag collapse, table digit
+      `dev/notes/2026-06-10-e2e-quality-findings.md` (equation-tag collapse, table digit
       errors like `9346.6→346.6` / `Fail→Full` — re-run those pages at ≥1664
       and diff). (The coordinate frame itself is resolved: per-axis on ≥9587
       at every input size, golden-tested.) Consider simply waiting for
-      upstream v1 tiling instead (`dev/docs/upstream-watch.md` §1) — real
+      upstream v1 tiling instead (`dev/notes/2026-06-10-upstream-watch.md` §1) — real
       tiling would change the question's shape entirely.
 - [ ] **Equation-number tag collapse in multi-row arrays** — DeepSeek keeps
       only one `(N)` tag per `\begin{array}` block (~8 arrays affected in one
       real paper; content otherwise faithful —
-      `dev/docs/e2e-quality-findings.md` §Equations). Vision-level: the tags
+      `dev/notes/2026-06-10-e2e-quality-findings.md` §Equations). Vision-level: the tags
       are absent from the raw output, so no text post-processing can recover
       them. Decide: accept as a documented limitation (the transcription
       notice already warns about equations), or test whether a ≥1664 render
       preserves the tags (fold into the gundam render-target probe above).
-- [ ] **OCR loop/truncation detection** (`dev/docs/equation-fidelity-findings.md`):
+- [ ] **OCR loop/truncation detection** (`dev/notes/2026-06-10-equation-fidelity-findings.md`):
       a real page looped at BF16 + grounded prompt + DRY and was **silently
       cached** with half its text missing — `DeepSeekOcrBackend.ocr_page` never
       checks `finish_reason`. Detect `finish_reason != "stop"` → warn loudly +
@@ -56,7 +56,7 @@ Legend: `[ ]` todo · `[!]` blocked.
       table pass's truncation handling). Note `--refresh` can't fix such a page
       (deterministic); suggest a different `--ocr-resolution` in the warning.
       (That specific page no longer loops on build 9587 —
-      `dev/docs/build-9587-verification.md` §4 — but the detection gap remains
+      `dev/notes/2026-06-10-build-9587-verification.md` §4 — but the detection gap remains
       for whatever page loops next.)
 
 ## Table-restructuring pass (DESIGN §9.7)
@@ -64,14 +64,14 @@ Legend: `[ ]` todo · `[!]` blocked.
 - [!] **Cropped table input** for crisper headers (Gemma downscales the whole
       page to ~896px, losing small header glyphs) — blocked: DeepSeek does not
       ground tables with boxes, so there is no clean table bbox to crop to
-      (`dev/docs/table-reconstruction-findings.md` §Notes). The cost is now
+      (`dev/notes/2026-06-10-table-reconstruction-findings.md` §Notes). The cost is now
       quantified: 5 of 10 tables on a real paper carry structure damage,
       concentrated in dense multi-header layouts
-      (`dev/docs/e2e-quality-findings.md` §Tables).
+      (`dev/notes/2026-06-10-e2e-quality-findings.md` §Tables).
 - [ ] **Guard against silent structure damage** in restructured tables —
       the worst observed failure is a syntactically clean table that silently
       dropped an entire column group (Table 1 in
-      `dev/docs/e2e-quality-findings.md`; also per-row cell drift, row-label
+      `dev/notes/2026-06-10-e2e-quality-findings.md`; also per-row cell drift, row-label
       misalignment). The old value-count check stays rejected (DeepSeek merges
       cells, so the blob is no baseline), but options remain: prompt-level
       column-count echo (pinned prompt — re-validate on real hardware before
@@ -83,7 +83,7 @@ Legend: `[ ]` todo · `[!]` blocked.
       gain). The validated prompt is a single user message — re-validate on
       real hardware before adopting.
 
-## Upstream llama.cpp watch (researched 2026-06-10 — `dev/docs/upstream-watch.md`)
+## Upstream llama.cpp watch (researched 2026-06-10 — `dev/notes/2026-06-10-upstream-watch.md`)
 
 - [ ] **DeepSeek-OCR 2 spike** — upstream support landed (llama.cpp PR #20975,
       2026-05-29; GGUFs at `sabafallah/DeepSeek-OCR-2-GGUF`, bf16 5.9+0.9 GB).
@@ -109,7 +109,7 @@ Legend: `[ ]` todo · `[!]` blocked.
       (`dev/plans/PLAN-bibtex-auto.md` B0–B4): `bibtex.mode` tri-state
       (legacy `enabled` alias), cached
       text-only citability/metadata probe (pinned prompt validated on real
-      hardware — `dev/docs/bibtex-probe-findings.md`, 4/4 PASS), provenance-
+      hardware — `dev/notes/2026-06-10-bibtex-probe-findings.md`, 4/4 PASS), provenance-
       first chain (S2-by-arXiv-ID preferring the published version → arXiv
       export API → S2 title search → local best-effort `@misc`), default
       flipped to `auto`. Spec: DESIGN §12. Deferred refinements

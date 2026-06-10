@@ -20,7 +20,7 @@ class ResolutionMode(str, Enum):
 
     The ``long_edge_px`` is the rasterizer's render target (long edge, in px).
     ``gundam`` was meant as the model-side tiling mode, but the pinned llama.cpp
-    build does NOT tile (dev/docs/gundam-findings.md) — it is currently a strict
+    build does NOT tile (dev/notes/2026-06-10-gundam-findings.md) — it is currently a strict
     alias of ``large``; raising its render target is a pending decision (TODO.md).
     """
 
@@ -179,7 +179,7 @@ class FigureConfig:
 
 @dataclass
 class TableConfig:
-    """VLM table restructuring (describe-stage; dev/docs/table-reconstruction-findings.md).
+    """VLM table restructuring (describe-stage; dev/notes/2026-06-10-table-reconstruction-findings.md).
 
     Independent of figure settings: ``--no-figures`` does not disable it. There is
     no per-table token budget — generation is bounded by ``llama.ctx_size`` (the

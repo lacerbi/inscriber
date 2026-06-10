@@ -3,7 +3,7 @@
 Created: 2026-06-10
 Status: ✅ IMPLEMENTED — all phases B0–B4 landed 2026-06-10 (see Execution
 checklist below); probe validated on real hardware
-(`dev/docs/bibtex-probe-findings.md`), default flipped to `auto`.
+(`dev/notes/2026-06-10-bibtex-probe-findings.md`), default flipped to `auto`.
 Revised: 2026-06-10 — pre-implementation review pass (codebase claims verified
 against source; amendments folded in: provenance-first chain with probe skip
 (decision 7), published-version-first by-ID lookup (decision 8), text-only
@@ -153,7 +153,7 @@ The probe is **text-only**: `ChatClient.chat()` already exists
 - The probe prompt is **pinned, model-facing behavior**: assembled exactly once
   per document via the backend (`build_bibtex_probe_prompt`), used verbatim as
   cache-key material AND as the request (DESIGN §9.2 discipline); changes
-  require re-validation on real hardware recorded in `dev/docs/`.
+  require re-validation on real hardware recorded in `dev/notes/`.
 - Cache: shared `VlmCache`, new key fn with `"kind": "bibtex-probe"`
   discriminator (disjoint from figure/table payloads by construction, like
   `make_table_key`). Key material: full assembled prompt (page-1 text
@@ -196,7 +196,7 @@ combined landing). Legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]
       provenance skip, `Bundle.original_url`, `_bibtex_outputs` growth,
       `test_bibtex_chain.py` (suite green, 282 tests)
 - [x] **B4a** — `dev/scripts/bibtex_probe_check.py` + real-hardware validation
-      → `dev/docs/bibtex-probe-findings.md`; prompt frozen (4/4 PASS on build
+      → `dev/notes/2026-06-10-bibtex-probe-findings.md`; prompt frozen (4/4 PASS on build
       9587 + Gemma E4B QAT, zero tuning; fence tolerance proved necessary)
 - [x] **B4b** — default flip to `auto` + deliberate test updates (suite green,
       284 tests; default-auto e2e tests added)
@@ -205,7 +205,7 @@ combined landing). Legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]
       §18.1, §20, §22.2, §24 rows 14–15b, §25), README ("What it does",
       outputs, options table, privacy), config.example.toml ([bibtex]+[net]),
       AGENTS.md (pipeline line + mock list), TODO.md (auto item closed;
-      alternate-sources arXiv half ✓), dev/docs/integration-test.md (steps
+      alternate-sources arXiv half ✓), dev/integration-test.md (steps
       6–7 + auto checks)
 - [x] Full suite green (286 tests) + `ruff check` clean; live CLI smoke
       confirms the legacy-config deprecation alias on the maintainer's
@@ -481,7 +481,7 @@ default to `auto`, and land the full documentation ripple as one change.
   discriminator phrase "bibliographic metadata" must survive tuning (or the
   test dispatch moves with it in the same change); record prompt,
   build, model, outcomes, and the abstain behavior in
-  **`dev/docs/bibtex-probe-findings.md`**; then treat the prompt as pinned
+  **`dev/notes/2026-06-10-bibtex-probe-findings.md`**; then treat the prompt as pinned
   (table-pass discipline).
 - Flip `BibtexConfig.mode` default → `"auto"`.
 - Docs (same change — AGENTS.md rule). The "only URL input and BibTeX touch
@@ -515,13 +515,13 @@ default to `auto`, and land the full documentation ripple as one change.
     itself; mark the alternate-sources item partially done (arXiv ✓,
     Crossref + reference-list extraction remain); add the deferred
     refinements from **Scope/Out**.
-- `dev/docs/integration-test.md`: add the auto-mode checks to the release
+- `dev/integration-test.md`: add the auto-mode checks to the release
   checklist; update step 6 (`--no-figures --offline` may now produce a
   best-effort `.bib` under the flipped default) and step 7 (`--bibtex`
   wording).
 
 **Verification**:
-- [x] Findings recorded in `dev/docs/bibtex-probe-findings.md`; prompt frozen
+- [x] Findings recorded in `dev/notes/2026-06-10-bibtex-probe-findings.md`; prompt frozen
       (4/4 PASS on build 9587 + Gemma E4B QAT, zero tuning needed).
 - [x] Default-`auto` e2e (mocked): citable doc → `.bib` written via the
       chain; non-citable probe → skip with the INFO line; `--offline` →
@@ -569,5 +569,5 @@ probe entries).
 ---
 **Plan executed in full (2026-06-10).** All phases B0–B4 landed as one change:
 suite green (284 tests), `ruff check` clean, the probe validated on real
-hardware (4/4, `dev/docs/bibtex-probe-findings.md`) and frozen, the default
+hardware (4/4, `dev/notes/2026-06-10-bibtex-probe-findings.md`) and frozen, the default
 flipped to `auto`, and the full docs ripple applied.

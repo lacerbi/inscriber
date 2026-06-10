@@ -9,7 +9,7 @@ The prompt is pinned, model-facing behavior (the table-pass discipline,
 DESIGN §9.2): assembled exactly once per document via the backend
 (``build_bibtex_probe_prompt``), used verbatim as cache-key material AND as the
 request. Changes require re-validation on real hardware recorded in
-``dev/docs/bibtex-probe-findings.md``. The phrase "bibliographic metadata" is
+``dev/notes/2026-06-10-bibtex-probe-findings.md``. The phrase "bibliographic metadata" is
 the pinned mock-dispatch discriminator (AGENTS.md) and must survive any tuning.
 """
 

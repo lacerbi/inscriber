@@ -25,7 +25,7 @@ Real runs read `./config.toml` (gitignored, machine-local) — `config.example.t
 is the tracked template. The maintainer's setup is llama.cpp build 9587 on an
 RTX 4060 8GB. Builds **older than 9587 are refused for OCR**
 (`DeepSeekOcrBackend.min_server_build` — the grounding coordinate frame changed
-upstream; DESIGN §2.2, `dev/docs/build-9587-verification.md`).
+upstream; DESIGN §2.2, `dev/notes/2026-06-10-build-9587-verification.md`).
 
 ## Where truth lives (read before changing behavior)
 
@@ -35,10 +35,11 @@ upstream; DESIGN §2.2, `dev/docs/build-9587-verification.md`).
   sections (`§9.7` etc.). When you change behavior, update DESIGN.md, README.md,
   and `config.example.toml` in the same change — this repo treats docs as
   first-class.
-- `dev/docs/` holds the **empirical evidence records** behind those sections
-  (`M1A-FINDINGS.md`, `table-reconstruction-findings.md`) — consult them before
-  changing model-facing behavior, and extend them when new real-hardware
-  findings land.
+- `dev/notes/` holds the **dated lab notes** (`YYYY-MM-DD-name.md`) — the
+  empirical evidence records behind those sections. Consult them before
+  changing model-facing behavior; when new real-hardware findings land, add a
+  new dated note (or an addendum/status line on an existing one) rather than
+  rewriting history.
 - `TODO.md` tracks concrete pending items (real-hardware verifications, code
   debts, blocked refinements) — add to it rather than burying TODOs in spec
   prose; longer-horizon future work stays in DESIGN §22.
@@ -123,4 +124,4 @@ session) → stitch/clean → split (main/appendix/backmatter) → BibTeX (defau
   DeepSeek parser is pinned to; extend it rather than inventing new shapes.
 - Changes to llama.cpp-facing behavior (prompts, template kwargs, server flags)
   cannot be proven by mocked tests — verify on real hardware (see
-  `dev/scripts/` for prior spike patterns) and record findings in `dev/docs/`.
+  `dev/scripts/` for prior spike patterns) and record findings in `dev/notes/`.

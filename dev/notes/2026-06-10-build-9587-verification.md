@@ -1,4 +1,6 @@
-# llama.cpp build 9587 verification — DeepSeek-OCR frame change (2026-06-10)
+# llama.cpp build 9587 verification — DeepSeek-OCR frame change
+
+> **Date:** 2026-06-10 · **Status:** concluded — re-pin shipped (`min_server_build = 9587`, per-axis `grid_to_norm`; DESIGN §2.2).
 
 > Executes the TODO item *"Verify llama.cpp build 9587 before trusting real
 > runs"*. **Verdict: NOT a drop-in — the grounding coordinate frame changed
@@ -67,7 +69,7 @@ Exactly one `processing image...` per request at every size; prompt tokens
 283 @1280 → 431 @≥1664, flat through 2560 — the same single-slice
 saturation shape as 9028's 273/421 (the +10 is likely template
 accounting). Encode ~0.8–3.1 s. Upstream Gundam tiling remains unshipped
-for DeepSeek-OCR v1 (see `upstream-watch.md`).
+for DeepSeek-OCR v1 (see `2026-06-10-upstream-watch.md`).
 
 ### 4. PriorGuide p. 5 loop: gone on this build ✓ (improvement)
 
@@ -108,7 +110,7 @@ the default is moot.
    - **Build-gated mapping** — `llama_build_identity()` is already probed
      for cache keys; `grid_to_norm` could select padded-square vs per-axis
      by build number. The changeover is bounded in (9028, 9587] — likely
-     the preprocessing rework flagged in `upstream-watch.md` (PR #23345,
+     the preprocessing rework flagged in `2026-06-10-upstream-watch.md` (PR #23345,
      unconfirmed); bisect or just gate at 9587. Needs per-frame golden
      fixtures.
    - **Re-pin v1 on ≥9587 per-axis only** — simplest code, drops verified

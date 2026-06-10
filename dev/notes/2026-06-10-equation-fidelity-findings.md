@@ -1,4 +1,6 @@
-# Equation fidelity — real-hardware findings (2026-06-10)
+# Equation fidelity — real-hardware findings
+
+> **Date:** 2026-06-10 · **Status:** concluded — measurements are build-9028-scoped; re-measured on 9587 in `2026-06-10-e2e-quality-findings.md` (same error classes, the loop is gone).
 
 > Closes the TODO item *"Equation fidelity: check DeepSeek-OCR's LaTeX/math
 > output quality on real papers; decide whether a normalization pass is
@@ -8,7 +10,7 @@
 >
 > **Re-measured on build 9587 (same day, same paper):** identical error
 > classes recur on the same equations — confirming they are model-inherent —
-> but the page-5 loop is gone (`dev/docs/e2e-quality-findings.md`). This
+> but the page-5 loop is gone (`dev/notes/2026-06-10-e2e-quality-findings.md`). This
 > file's measurements are 9028-scoped; the conclusions stand.
 
 ## Setup
@@ -86,7 +88,7 @@ Consequences observed:
 4. Determinism means `--refresh` will NOT fix such a page (same input → same
    loop). A different render size is NOT a reliable remedy either: the same
    page re-rendered at 2048 px long edge also degenerated, just in a different
-   shape (`gundam-findings.md`). The realistic fix is hand-editing the bundle
+   shape (`2026-06-10-gundam-findings.md`). The realistic fix is hand-editing the bundle
    markdown (the two-step workflow).
 
 Follow-up tracked in `TODO.md`: detect `finish_reason != "stop"` on OCR pages →

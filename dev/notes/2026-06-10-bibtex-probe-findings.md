@@ -1,6 +1,7 @@
 # BibTeX probe — real-hardware validation (PLAN-bibtex-auto B4)
 
-Date: 2026-06-10
+> **Date:** 2026-06-10 · **Status:** concluded — prompt frozen (DESIGN §12); re-run `dev/scripts/bibtex_probe_check.py` and update this note before changing it.
+
 Hardware: RTX 4060 Laptop 8GB
 llama.cpp: build **9587 (d2e22ed97)**, Clang 20.1.8 Windows x86_64 (`C:/Users/luigi/llms/new`)
 Model: `gemma-4-E4B-it-qat-UD-Q4_K_XL.gguf` + `gemma-4-E4B-it-mmproj-BF16.gguf`, `-ngl auto`, ctx 16384

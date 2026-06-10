@@ -7,7 +7,7 @@ extracted with PyMuPDF as a proxy for the production input (OCR markdown).
 
     python dev/scripts/bibtex_probe_check.py
 
-Outcomes are recorded in dev/docs/bibtex-probe-findings.md; once recorded, the
+Outcomes are recorded in dev/notes/2026-06-10-bibtex-probe-findings.md; once recorded, the
 prompt is pinned (table-pass discipline).
 """
 

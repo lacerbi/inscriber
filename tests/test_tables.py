@@ -1,4 +1,4 @@
-"""Table restructuring pass (dev/docs/table-reconstruction-findings.md).
+"""Table restructuring pass (dev/notes/2026-06-10-table-reconstruction-findings.md).
 
 Unit tests for the tables module (blob detection, guards, prompt, sanitation,
 splicing), the Gemma table call (thinking kwarg, truncation→None), the table

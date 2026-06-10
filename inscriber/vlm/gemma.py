@@ -2,7 +2,7 @@
 
 Used as a vision→text describer (figure crops → prose, DESIGN §9) and as the
 table restructurer (whole page image + DeepSeek ``<table>`` blob → Markdown pipe
-table, dev/docs/table-reconstruction-findings.md). Prompts are assembled once by
+table, dev/notes/2026-06-10-table-reconstruction-findings.md). Prompts are assembled once by
 the orchestrator via ``build_prompt``/``build_table_prompt`` — the same strings
 are the cache-key material (DESIGN §9.6) — and passed into
 ``describe``/``restructure_table``.

@@ -189,7 +189,7 @@ def test_no_cache_writes_nothing_to_cache_dir(tmp_path, monkeypatch, hermetic_ca
 
 def test_old_llama_build_is_refused(tmp_path, monkeypatch, hermetic_cache):
     # DeepSeek-OCR pins min_server_build = 9587 (the grounding coordinate frame
-    # changed upstream, dev/docs/build-9587-verification.md): an older server
+    # changed upstream, dev/notes/2026-06-10-build-9587-verification.md): an older server
     # must be refused up front, not silently mis-crop every figure.
     from inscriber.config import ConfigError
 

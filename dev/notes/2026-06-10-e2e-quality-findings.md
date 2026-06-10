@@ -1,10 +1,12 @@
-# End-to-end quality check — full paper on build 9587 (2026-06-10)
+# End-to-end quality check — full paper on build 9587
+
+> **Date:** 2026-06-10 · **Status:** concluded — action items tracked in `TODO.md`.
 
 > First full-paper quality measurement on the re-pinned llama.cpp build 9587
-> (same-day re-pin: `build-9587-verification.md`). Document: **PriorGuide**
+> (same-day re-pin: `2026-06-10-build-9587-verification.md`). Document: **PriorGuide**
 > (ICLR 2026, `openreview.net/pdf?id=G4I23g5Ugh` ≡ arXiv 2510.13763) — chosen
 > deliberately: it is the same paper as the 9028-era
-> `equation-fidelity-findings.md`, giving a direct before/after comparison.
+> `2026-06-10-equation-fidelity-findings.md`, giving a direct before/after comparison.
 >
 > **Verdict:** pipeline mechanics flawless (per-axis crops confirmed on a real
 > multi-figure paper; zero placeholder/description failures; no loops); OCR

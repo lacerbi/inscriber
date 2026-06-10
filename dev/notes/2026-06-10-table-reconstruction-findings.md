@@ -1,5 +1,7 @@
 # Table reconstruction findings (post-v1 investigation)
 
+> **Date:** 2026-06-10 · **Status:** concluded — shipped as the table-restructuring pass, prompt pinned (DESIGN §9.7).
+
 > **Status: IMPLEMENTED** (2026-06-10) as the pipeline's table-restructuring pass —
 > see DESIGN §9.7 and `inscriber/postprocess/tables.py` (prompt/splicing),
 > `inscriber/pipeline.py` `_refine_tables` (orchestration), `vlm/gemma.py`

@@ -10,7 +10,7 @@ on GPU-less runners — see `.github/workflows/ci.yml`). Run it before a release
   newer** — older builds are refused for OCR (`min_server_build`; the
   grounding frame changed upstream, DESIGN §2.2). v1 was validated on
   **build 9587 (`d2e22ed97`)**, CUDA, on an RTX 4060 Laptop (8 GB VRAM)
-  (originally on 9028 — `dev/docs/build-9587-verification.md` records the
+  (originally on 9028 — `dev/notes/2026-06-10-build-9587-verification.md` records the
   re-validation).
 - Two `(model, mmproj)` GGUF pairs:
   - **OCR:** DeepSeek-OCR — `deepseek-ocr-bf16.gguf` + `mmproj-deepseek-ocr-bf16.gguf`
@@ -18,7 +18,7 @@ on GPU-less runners — see `.github/workflows/ci.yml`). Run it before a release
   - **VLM:** Gemma 4 E4B — `gemma-4-E4B-it-Q4_K_M.gguf` + `mmproj-BF16.gguf`.
 - A known sample PDF (e.g. `tests/fixtures/sample_paper.pdf`, or a real arXiv PDF).
 
-See `dev/docs/M1A-FINDINGS.md` + `dev/docs/build-9587-verification.md` for the
+See `dev/notes/2026-06-09-m1a-findings.md` + `dev/notes/2026-06-10-build-9587-verification.md` for the
 pinned, empirically-confirmed facts (server HTTP path works; image-before-text
 required; per-axis coordinate frame on ≥9587; the `LABEL[[bbox]]` grounding
 format).
@@ -92,7 +92,7 @@ VLM_P=$MODELS/gemma-4-E4B-it-mmproj-BF16.gguf
    - a non-citable PDF (slides, an invoice) logs `document judged not
      citable; skipping` and writes no `.bib` —
      `dev/scripts/bibtex_probe_check.py` covers the probe verdicts standalone
-     (record any prompt change in `dev/docs/bibtex-probe-findings.md`);
+     (record any prompt change in `dev/notes/2026-06-10-bibtex-probe-findings.md`);
    - explicit `--bibtex` (= `--bibtex-mode on`) keeps the original
      always-look-up path; `--bibtex-in-doc` also prepends a fenced entry to
      `paper.md` / `paper.main.md`.

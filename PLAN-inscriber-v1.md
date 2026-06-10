@@ -31,7 +31,7 @@ gates.
 Legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked / needs hardware.
 
 - [x] **M0 — Skeleton**: pyproject, models, config, cli, logging, pipeline stub, test_config — DONE (17 tests green, ruff clean, `--version` works)
-- [x] **M1a — De-risk spike**: resolver(local), llama/server, llama/client, ocr/base (Inferencer), pdf/rasterize, test_llama_server, calibration fixture — **DONE + RESOLVED ON REAL HARDWARE**. See `dev/docs/M1A-FINDINGS.md`. Build 9028, RTX 4060 8GB.
+- [x] **M1a — De-risk spike**: resolver(local), llama/server, llama/client, ocr/base (Inferencer), pdf/rasterize, test_llama_server, calibration fixture — **DONE + RESOLVED ON REAL HARDWARE**. See `dev/notes/2026-06-09-m1a-findings.md`. Build 9028, RTX 4060 8GB.
   - **⚠️ 3 divergences from DESIGN found empirically (M1b locks to these):**
     1. **Round-trip OK via server HTTP path** (issue #21022 absent on build 9028). mtmd-cli currently **crashes** (STATUS_STACK_BUFFER_OVERRUN) — server path ships; mtmd kept as documented-broken fallback.
     2. **Image content-part MUST precede text** or grounding never activates (`chat_image(image_first=True)` — fixed).
@@ -41,7 +41,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked / needs h
 - [x] **M2 — Figures + two-step**: pdf/figures, pdf/crop, vlm/* (Gemma), postprocess/prompt+inject, bundle, VLM cache, output(M2 subset), errors.py, full run/ocr/describe orchestration, test_prompt/test_inject/test_crop/test_bundle_roundtrip — **DONE + verified end-to-end on real hardware** (`inscriber ocr` → bundle; `inscriber describe` → Gemma described the figure accurately; blockquote format exact). VLM cache keyed on model identity ⇒ swapping `--vlm-model` re-describes while OCR/crops reuse.
 - [x] **M3 — Assembly & splitting**: postprocess/stitch (normalize/ensure-spacing ports + header-footer/dehyphen), postprocess/splitter (full port), output(splits), pipeline assembly wired, test_splitter, test_stitch — **DONE + verified on hardware**. ⚠️ Splitter A-pattern guard made **stricter than paper2llm** per DESIGN §11 intent (bare "A " heading requires an ack anchor) — caught the "A Calibration Study" title false-positive.
 - [x] **M4 — Inputs & BibTeX**: resolver(URL)+domain_handlers (7 configs verbatim), bibtex/semantic_scholar (lookup/key/validation/mock + 429 degrade), pipeline wiring (.bib + fenced prepend), test_domain_handlers, test_bibtex — **DONE**.
-- [x] **M5 — Hardening**: test_pipeline_mocked (full run mocked), test_pdf_embedded_figures, concurrent mode (pre-launch VLM overlapping OCR), CI matrix (`.github/workflows/ci.yml`, 3 OS × py3.10–3.12), packaging (wheel builds + installs fresh, console script resolves), README + dev/docs/integration-test.md — **DONE**.
+- [x] **M5 — Hardening**: test_pipeline_mocked (full run mocked), test_pdf_embedded_figures, concurrent mode (pre-launch VLM overlapping OCR), CI matrix (`.github/workflows/ci.yml`, 3 OS × py3.10–3.12), packaging (wheel builds + installs fresh, console script resolves), README + dev/integration-test.md — **DONE**.
 
 ### ✅ v1 COMPLETE — all milestones M0–M5 done (2026-06-09)
 
@@ -80,7 +80,7 @@ clean `ConfigError` instead of a `TypeError`; (P3) `copy_figures` honors `--no-c
 "finding" from the same reviewer was incorrect for build 9028 — verified — and was already
 neutralized by the omit-on-auto change above.)
 - **Verified end-to-end on real hardware** (build 9028, RTX 4060 8GB): `inscriber ocr` → bundle; `inscriber describe` (Gemma) → accurate figure descriptions; cache hits skip the server.
-- **3 design divergences caught empirically in M1a and locked in** (see `dev/docs/M1A-FINDINGS.md`): server HTTP path (not mtmd-cli), image-before-text ordering, **padded-square** coord frame + `LABEL[[bbox]]` grounding format (not `<|ref|>`/`<|det|>`).
+- **3 design divergences caught empirically in M1a and locked in** (see `dev/notes/2026-06-09-m1a-findings.md`): server HTTP path (not mtmd-cli), image-before-text ordering, **padded-square** coord frame + `LABEL[[bbox]]` grounding format (not `<|ref|>`/`<|det|>`).
 - **1 splitter correctness fix** beyond paper2llm: bare "A " appendix heading requires an ack anchor (DESIGN §11 intent) — prevents title false-positives.
 - Deferred (per DESIGN §22): GLM-OCR/PaddleOCR-VL/Dots.OCR backends, DeepSeek-OCR-2, Gundam coord-frame confirmation, cross-page table reconstruction, batch mode. mtmd-cli fallback present but currently crashes on build 9028 (server path ships).
 
@@ -88,7 +88,7 @@ neutralized by the omit-on-auto change above.)
 > round-trip over `/v1/chat/completions`; grounding coordinate frame) require real
 > llama.cpp + GGUFs and cannot be executed by the implementing agent. Code is written
 > to the DESIGN defaults (reference per-axis mapping, server HTTP path) and golden
-> tests use **synthetic illustrative** DeepSeek output; `dev/docs/M1A-FINDINGS.md` records
+> tests use **synthetic illustrative** DeepSeek output; `dev/notes/2026-06-09-m1a-findings.md` records
 > what the user must confirm on real hardware and where to lock the result.
 
 ## Scope
@@ -302,14 +302,14 @@ until this lands."*
 **Outputs of M1a (feed M1b)**:
 - 2–3 representative pages of **real DeepSeek-OCR grounding output** committed to
   `tests/fixtures/`.
-- A short `dev/docs/M1A-FINDINGS.md` recording: build/version pinned, server-vs-mtmd-cli
+- A short `dev/notes/2026-06-09-m1a-findings.md` recording: build/version pinned, server-vs-mtmd-cli
   decision, the coordinate-frame answer (with the reproduced-box evidence), Gundam
   note, and the exact prompt/token strings.
 
 **Verification**:
 - [ ] A real image round-trips (server path) OR mtmd-cli fallback proven, documented.
 - [ ] Coordinate frame determined with reproduced-box evidence; locked for M1b.
-- [ ] Fixtures committed; `dev/docs/M1A-FINDINGS.md` written.
+- [ ] Fixtures committed; `dev/notes/2026-06-09-m1a-findings.md` written.
 
 **Exit gate**: M1b's parser + coordinate mapping are pinned to these fixtures/findings.
 Do not start M1b's mapping logic until this is locked.
@@ -559,9 +559,9 @@ PyPI packaging. DESIGN §5.4, §15, §17, §18.
   the **privacy/offline statement** (DESIGN §6/§20 — only URL input + BibTeX touch the
   network; `--offline` hard-disables), config reference, the two-step `ocr`/`describe`
   workflow, llama.cpp + GGUF setup pointers.
-- `dev/docs/M1A-FINDINGS.md` (M1a): pinned build, server-vs-mtmd-cli decision, coordinate
+- `dev/notes/2026-06-09-m1a-findings.md` (M1a): pinned build, server-vs-mtmd-cli decision, coordinate
   frame answer + evidence, Gundam note, exact prompt/token strings.
-- `dev/docs/integration-test.md` (M5): how to validate against real llama.cpp + real GGUFs
+- `dev/integration-test.md` (M5): how to validate against real llama.cpp + real GGUFs
   with a known sample PDF (release checklist).
 - Done: the substantive corrections are folded into `DESIGN.md` §6/§12; the full
   8-item list is tracked in the "Corrections" section of this plan.

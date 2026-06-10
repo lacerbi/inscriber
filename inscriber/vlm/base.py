@@ -1,5 +1,5 @@
 """``VlmBackend`` abstraction for figure description (DESIGN §9.2) and table
-restructuring (dev/docs/table-reconstruction-findings.md)."""
+restructuring (dev/notes/2026-06-10-table-reconstruction-findings.md)."""
 
 from __future__ import annotations
 

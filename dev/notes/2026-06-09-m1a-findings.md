@@ -1,5 +1,7 @@
 # M1A findings — DeepSeek-OCR de-risk spike
 
+> **Date:** 2026-06-09 · **Status:** partially superseded — the server-path and block-format facts stand (DESIGN §2.1–2.2); the padded-square coordinate frame was build-9028-scoped, re-determined as per-axis on ≥9587 (`2026-06-10-build-9587-verification.md`).
+
 > **Purpose (PLAN M1a / DESIGN §2.1, §2.2, §8.3):** pin the two highest-risk
 > empirical unknowns on the real, pinned llama.cpp build before M1b locks the OCR
 > parser + coordinate mapping. *"Nothing else can be trusted until this lands."*
@@ -61,10 +63,10 @@
   x_norm = clamp(px / W_px, 0, 1);  y_norm = clamp(py / H_px, 0, 1)
   ```
 - Gundam frame: **resolved 2026-06-10** — no tiling on this build; the same
-  padded-square frame applies at every input size (`gundam-findings.md`).
+  padded-square frame applies at every input size (`2026-06-10-gundam-findings.md`).
 - ⚠️ **Superseded (build ≥ 9587):** everything above is 9028-specific — newer
   builds emit **per-axis** coords (the "reference prediction" above!) and the
-  project re-pinned accordingly (`build-9587-verification.md`).
+  project re-pinned accordingly (`2026-06-10-build-9587-verification.md`).
 
 ## ⚠️ Q3 — Grounding OUTPUT FORMAT (not `<|ref|>`/`<|det|>`)
 
@@ -120,5 +122,5 @@ M1b's parser + coordinate mapping are locked to: **server HTTP path**, **image-f
 > verification) used `deepseek-ocr-bf16.gguf` per the working config and produced
 > the same `LABEL[[bbox]]` format with correct padded-square crops. The **Gundam
 > frame is closed too** (later the same day): no tiling on this build, frame
-> render-size-invariant — see `gundam-findings.md`, which also adds `equation`
+> render-size-invariant — see `2026-06-10-gundam-findings.md`, which also adds `equation`
 > to the observed-labels list (emitted at high-res renders).

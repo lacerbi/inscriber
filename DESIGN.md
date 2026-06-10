@@ -4,9 +4,9 @@
 > is the **authoritative, living specification** and is kept in sync with the
 > code. Where the original pre-implementation draft made assumptions that real
 > hardware later contradicted, the text below states the **confirmed** behavior
-> directly; the empirical evidence records live in `dev/docs/`
-> (`M1A-FINDINGS.md` for the OCR facts in §2.1–2.2/§8.3,
-> `table-reconstruction-findings.md` for §9.7).
+> directly; the empirical evidence records live in `dev/notes/`
+> (`2026-06-09-m1a-findings.md` for the OCR facts in §2.1–2.2/§8.3,
+> `2026-06-10-table-reconstruction-findings.md` for §9.7).
 >
 > **Audience:** A developer who has never seen this project (or its sibling,
 > `paper2llm`). It is written to be read entirely standalone — every concept,
@@ -19,12 +19,12 @@
 > `--bibtex` as the `on` alias and a legacy `enabled` mapping; the
 > network-privacy statements throughout reworded — online lookups send the
 > extracted title/ID only, the document never leaves the machine. Probe
-> validated + frozen in `dev/docs/bibtex-probe-findings.md`. Also same day:
+> validated + frozen in `dev/notes/2026-06-10-bibtex-probe-findings.md`. Also same day:
 > §2.2/§8.2/§8.3: **re-pinned on llama.cpp build
 > ≥ 9587** — the grounding frame changed upstream to per-axis; `grid_to_norm`
 > now maps per-axis only and `DeepSeekOcrBackend.min_server_build = 9587` makes
 > the pipeline refuse older servers (verification + live calibration evidence
-> in `dev/docs/build-9587-verification.md`; fixtures re-captured on 9587; the
+> in `dev/notes/2026-06-10-build-9587-verification.md`; fixtures re-captured on 9587; the
 > known loop page no longer loops there). Also: §8.6/§9.6/§9.7 the llama.cpp
 > **build identity** is now OCR/VLM cache-key material — `llama-server
 > --version`, or the endpoint's `/props` `build_info` — so a llama.cpp upgrade
@@ -32,10 +32,10 @@
 > value field was renamed alongside (`VLM_VALUE_SCHEMA` 2). Earlier same day:
 > §2.2/§22.2
 > DeepSeek-OCR-2 is now supported upstream — llama.cpp PR #20975 — adoption
-> gated on the TODO spike (research in `dev/docs/upstream-watch.md`); Gundam
+> gated on the TODO spike (research in `dev/notes/2026-06-10-upstream-watch.md`); Gundam
 > confirmed — no tiling on build 9028, gundam ≡ `large`, frame
-> render-size-invariant (`dev/docs/gundam-findings.md`); BF16 loop observed in
-> the wild (`dev/docs/equation-fidelity-findings.md`); §9.2/§9.6
+> render-size-invariant (`dev/notes/2026-06-10-gundam-findings.md`); BF16 loop observed in
+> the wild (`dev/notes/2026-06-10-equation-fidelity-findings.md`); §9.2/§9.6
 > one-VLM-instance consolidation; §9.7 nested-table guard)
 
 ---
@@ -120,7 +120,7 @@ llama.cpp exposes multimodal (vision) inference two ways, both relevant here:
   ⚠️ note below and §8.2), because the server image path has had model-specific
   bugs.
 
-> ✅ **Resolved (M1a, build 9028 — `dev/docs/M1A-FINDINGS.md` Q1).** A base64
+> ✅ **Resolved (M1a, build 9028 — `dev/notes/2026-06-09-m1a-findings.md` Q1).** A base64
 > image **round-trips successfully** through DeepSeek-OCR via `llama-server`
 > `/v1/chat/completions` — llama.cpp issue #21022 ("number of bitmaps (1) does
 > not match number of markers (0)") does **not** affect this build. **v1 ships
@@ -166,7 +166,7 @@ So **every** model `inscriber` uses (OCR and VLM) is configured as a
   **unverified**. **v1 targets the original DeepSeek-OCR** (arXiv 2510.18234,
   the DeepSeek3B-MoE-A570M decoder, PR #17400); adopting v2 is gated on the
   verification spike in `TODO.md` (§22.2; research record:
-  `dev/docs/upstream-watch.md`).
+  `dev/notes/2026-06-10-upstream-watch.md`).
 - **Quirks (must be respected):**
   - Use **f16** weights. **Q4_K_M causes runaway repetition loops** because the
     upstream model uses an **n-gram repetition penalty (ngram_size≈30,
@@ -178,7 +178,7 @@ So **every** model `inscriber` uses (OCR and VLM) is configured as a
     wall-clock timeout + soft-failure** on a looping/truncated page (§5.3, §16).
     ⚠️ **f16 reduces but does not eliminate loops**: a real page looped at BF16
     + grounded prompt + DRY + temp 0 (a dense multi-underbrace equation array;
-    2026-06-10, `dev/docs/equation-fidelity-findings.md`). The cap bounded it,
+    2026-06-10, `dev/notes/2026-06-10-equation-fidelity-findings.md`). The cap bounded it,
     but detection of the truncated page is a known gap — tracked in `TODO.md`.
   - Drive OCR **deterministically**: `temperature: 0` + fixed seed (part of the
     cache key, §8.6).
@@ -202,7 +202,7 @@ So **every** model `inscriber` uses (OCR and VLM) is configured as a
     invented one). `inscriber` **defaults to `large`**, exposes the full ladder,
     and `gundam` as the dense-page opt-in (§7, §13). See §7 for the mode→render
     mapping. ✅ **Confirmed (2026-06-10): neither build 9028 nor 9587 tiles**
-    (`dev/docs/gundam-findings.md`, `dev/docs/build-9587-verification.md`) —
+    (`dev/notes/2026-06-10-gundam-findings.md`, `dev/notes/2026-06-10-build-9587-verification.md`) —
     every input is encoded as one slice (vision tokens saturate for ≥1664 px
     long edge: 421 vs 273 at 1280 on 9028; 431 vs 283 on 9587), so `gundam`
     (rendering 1280, like `large`) is currently a **strict alias of `large`**,
@@ -211,8 +211,8 @@ So **every** model `inscriber` uses (OCR and VLM) is configured as a
     (`TODO.md`).
 
 > ✅ **Grounding format & coordinate frame (CONFIRMED on build 9587 —
-> `dev/docs/build-9587-verification.md`; format originally established in M1a
-> on build 9028, `dev/docs/M1A-FINDINGS.md` Q2–Q3; locked in
+> `dev/notes/2026-06-10-build-9587-verification.md`; format originally established in M1a
+> on build 9028, `dev/notes/2026-06-09-m1a-findings.md` Q2–Q3; locked in
 > `tests/test_deepseek_parser.py` golden fixtures).** Upstream DeepSeek-VL docs
 > describe inline `<|ref|>LABEL<|/ref|><|det|>[[x1, y1, x2, y2]]<|/det|>` spans,
 > but **llama.cpp emits a block layout list** instead — one region per block:
@@ -745,9 +745,9 @@ so cropping (§8.4) is genuinely model-agnostic and the coordinate-frame mapping
 > (`tests/fixtures/deepseek_paper_p1_raw.txt`, `deepseek_calibration_raw.txt`),
 > `test_deepseek_parser.py` is pinned to them, and the coordinate frame was
 > determined empirically via a calibration page with a box at a known location
-> (padded-square on build 9028, `dev/docs/M1A-FINDINGS.md` Q2; **re-determined
+> (padded-square on build 9028, `dev/notes/2026-06-09-m1a-findings.md` Q2; **re-determined
 > as per-axis on build 9587** and the fixtures re-captured,
-> `dev/docs/build-9587-verification.md` — the capture→compare→re-pin
+> `dev/notes/2026-06-10-build-9587-verification.md` — the capture→compare→re-pin
 > discipline in action). Re-run it on any llama.cpp or model upgrade (§22.2).
 
 ### 8.4 Figure detection & cropping (`pdf/figures.py`, `pdf/crop.py`)
@@ -1081,7 +1081,7 @@ re-describing figures.
 
 ### 9.7 Table restructuring (`postprocess/tables.py`) — tables before figures
 
-> Validated post-v1 in `dev/docs/table-reconstruction-findings.md`; that note holds
+> Validated post-v1 in `dev/notes/2026-06-10-table-reconstruction-findings.md`; that note holds
 > the experiment history and the prompt rationale. This section is the
 > implemented behavior.
 
@@ -1326,7 +1326,7 @@ present):
   failure (§12.2). Requires network — under `--offline` it skips with a
   warning. No LLM involved; works with no VLM configured.
 - **`auto`** — (default; the probe was validated on real hardware and frozen,
-  `dev/docs/bibtex-probe-findings.md`) decide whether the document is
+  `dev/notes/2026-06-10-bibtex-probe-findings.md`) decide whether the document is
   *citable*, then produce an entry through an ordered source chain (§12.1).
   Never fails the run: every failure degrades to the next source or to a
   logged skip (§16).
@@ -1974,7 +1974,7 @@ is wired.
   upgrade, gated on the spike in `TODO.md`: its grounding format + coordinate
   frame **under real tiling** must be confirmed with the M1a calibration
   discipline, and it needs a new `deepseek-ocr-2` backend (different server
-  template/flags). Research record: `dev/docs/upstream-watch.md`.
+  template/flags). Research record: `dev/notes/2026-06-10-upstream-watch.md`.
 - **BibTeX refinements** (§12 shipped the `auto` chain; deferred from
   `dev/plans/PLAN-bibtex-auto.md`): a `--bibtex-source` CLI axis; **Crossref** as an
   additional source; S2 **by-DOI** lookup for bioRxiv/medRxiv provenance

@@ -200,7 +200,7 @@ def _check_server_build(backend, server_identity: str) -> None:
         raise ConfigError(
             f"llama.cpp build {num} is too old for OCR backend {backend.name!r} "
             f"(requires >= {min_build}: the grounding coordinate frame changed "
-            f"upstream — see dev/docs/build-9587-verification.md). "
+            f"upstream — see dev/notes/2026-06-10-build-9587-verification.md). "
             f"Use a llama.cpp build >= {min_build} for the OCR server "
             f"(llama.bin_dir, or the server behind --ocr-endpoint)."
         )
@@ -416,7 +416,7 @@ class _VlmSession:
 
 def _refine_tables(cfg: RunConfig, pages: list[_Page], session: _VlmSession) -> int:
     """Restructure DeepSeek ``<table>`` blobs via the VLM, before figure description
-    (dev/docs/table-reconstruction-findings.md).
+    (dev/notes/2026-06-10-table-reconstruction-findings.md).
 
     Cache-first; the shared ``session`` launches the VLM server only on a miss.
     Any per-table failure (error, truncation, unusable output) keeps the original

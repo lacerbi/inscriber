@@ -1,7 +1,7 @@
 """DeepSeek-OCR backend (DESIGN §8.3) — pinned to real-hardware findings.
 
-**Confirmed facts (DESIGN §2.1–2.2/§8.3; evidence in dev/docs/M1A-FINDINGS.md and
-dev/docs/build-9587-verification.md), locked here:**
+**Confirmed facts (DESIGN §2.1–2.2/§8.3; evidence in dev/notes/2026-06-09-m1a-findings.md and
+dev/notes/2026-06-10-build-9587-verification.md), locked here:**
 
 * Output is a **block layout list**, one region per block::
 
@@ -56,7 +56,7 @@ GRID_MAX = 999.0  # DeepSeek-OCR grounding grid is 0..999.
 # Minimum llama.cpp build (DESIGN §2.2): the grounding frame changed upstream
 # between builds 9028 (padded-square) and 9587 (per-axis); this backend pins the
 # per-axis frame, so older servers would silently shift every figure crop
-# (dev/docs/build-9587-verification.md). Enforced by the pipeline at OCR time.
+# (dev/notes/2026-06-10-build-9587-verification.md). Enforced by the pipeline at OCR time.
 MIN_SERVER_BUILD = 9587
 
 
@@ -65,7 +65,7 @@ def grid_to_norm(
 ) -> tuple[float, float, float, float]:
     """Map a 0–999 grounding box to the original-page [0,1] frame.
 
-    Per-axis (verified on build 9587, dev/docs/build-9587-verification.md §2):
+    Per-axis (verified on build 9587, dev/notes/2026-06-10-build-9587-verification.md §2):
     the grid spans the original image independently per axis, so
     ``norm = clamp(grid / 999, 0, 1)`` — no padding terms. The frame is
     render-size-invariant (identical grid coords at 1280–2560 px renders).

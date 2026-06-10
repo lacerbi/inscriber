@@ -1,4 +1,6 @@
-# Upstream llama.cpp watch — v1 tiling & DeepSeek-OCR 2 (researched 2026-06-10)
+# Upstream llama.cpp watch — v1 tiling & DeepSeek-OCR 2
+
+> **Date:** 2026-06-10 · **Status:** living — updated as upstream moves (watch items in `TODO.md`).
 
 > Research record (GitHub/paper lookup, **not** local-hardware findings): where
 > upstream is on the two things the pinned build 9028 lacks — Gundam tiling for
@@ -8,7 +10,7 @@
 >
 > **Update (later the same day):** the pin moved to **build 9587** — which
 > includes DeepSeek-OCR-2 support and DID change v1's grounding frame, exactly
-> as §3 warned (`dev/docs/build-9587-verification.md`). 9028-relative gating
+> as §3 warned (`dev/notes/2026-06-10-build-9587-verification.md`). 9028-relative gating
 > statements below are history; §3's cache-correctness gap is closed.
 
 ## 1. v1 Gundam tiling: deliberately cut from #17400; follow-up in limbo
@@ -17,7 +19,7 @@
   support we run, merged 2026-03-25) **descoped Gundam on purpose** — the
   maintainer (ngxson) asked to split it out; the author (sfallah — the same
   account whose HF repo hosts our BF16 GGUFs) agreed: *"I'll finish the Gundam
-  implementation in a follow-up PR."* This is why `gundam-findings.md` measured
+  implementation in a follow-up PR."* This is why `2026-06-10-gundam-findings.md` measured
   one slice / no tiling: that is the shipped state, not an accident.
   Technical blockers discussed there: the view-separator is an embedding (not
   a vocab token), and tile batching needs a batch dim in the vision graph.
@@ -59,7 +61,7 @@ by content rather than fixed scan order):
 | repetition rate (PDF production) | 3.69% | **2.88%** |
 
 The repetition reduction targets exactly the loop class we hit in the wild
-(`equation-fidelity-findings.md`); reading order matters directly for stitched
+(`2026-06-10-equation-fidelity-findings.md`); reading order matters directly for stitched
 markdown.
 
 **llama.cpp implementation facts (from the PR):**
@@ -100,7 +102,7 @@ markdown.
   outputs and grounding coords may shift on a newer build. The M1a re-capture
   discipline applies: capture, compare, re-pin fixtures (DESIGN §22.2).
   *(Confirmed the same day: build 9587 measures **per-axis**, not
-  padded-square — `dev/docs/build-9587-verification.md`; this PR is the
+  padded-square — `dev/notes/2026-06-10-build-9587-verification.md`; this PR is the
   likely cause, unbisected.)*
 - ⚠️ **Cache-correctness gap surfaced by this:** the OCR/VLM cache keys did NOT
   include any llama.cpp build identity — an upgrade that changes preprocessing
