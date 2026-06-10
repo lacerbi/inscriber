@@ -5,6 +5,11 @@
 > needed."* **Verdict: no normalization pass** (§Conclusions). A new, more
 > important finding fell out of the same session: a **silent repetition loop on
 > a real page at BF16** (§The page-5 loop).
+>
+> **Re-measured on build 9587 (same day, same paper):** identical error
+> classes recur on the same equations — confirming they are model-inherent —
+> but the page-5 loop is gone (`dev/docs/e2e-quality-findings.md`). This
+> file's measurements are 9028-scoped; the conclusions stand.
 
 ## Setup
 

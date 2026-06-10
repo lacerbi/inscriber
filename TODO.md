@@ -33,11 +33,21 @@ Legend: `[ ]` todo · `[!]` blocked.
       1280). Rendering ≥1664 buys the saturated visual encoding (431 vs 283
       prompt tokens on 9587; ~3× encode time). Decide whether
       `ResolutionMode.GUNDAM.long_edge_px` becomes 2048 — validate OCR quality
-      on dense pages first. (The coordinate frame itself is resolved:
-      per-axis on ≥9587 at every input size, golden-tested.) Consider simply
-      waiting for upstream v1 tiling instead
-      (`dev/docs/upstream-watch.md` §1) — real tiling would change the
-      question's shape entirely.
+      on dense pages first; concrete probes now exist in
+      `dev/docs/e2e-quality-findings.md` (equation-tag collapse, table digit
+      errors like `9346.6→346.6` / `Fail→Full` — re-run those pages at ≥1664
+      and diff). (The coordinate frame itself is resolved: per-axis on ≥9587
+      at every input size, golden-tested.) Consider simply waiting for
+      upstream v1 tiling instead (`dev/docs/upstream-watch.md` §1) — real
+      tiling would change the question's shape entirely.
+- [ ] **Equation-number tag collapse in multi-row arrays** — DeepSeek keeps
+      only one `(N)` tag per `\begin{array}` block (~8 arrays affected in one
+      real paper; content otherwise faithful —
+      `dev/docs/e2e-quality-findings.md` §Equations). Vision-level: the tags
+      are absent from the raw output, so no text post-processing can recover
+      them. Decide: accept as a documented limitation (the transcription
+      notice already warns about equations), or test whether a ≥1664 render
+      preserves the tags (fold into the gundam render-target probe above).
 - [ ] **OCR loop/truncation detection** (`dev/docs/equation-fidelity-findings.md`):
       a real page looped at BF16 + grounded prompt + DRY and was **silently
       cached** with half its text missing — `DeepSeekOcrBackend.ocr_page` never
@@ -54,7 +64,20 @@ Legend: `[ ]` todo · `[!]` blocked.
 - [!] **Cropped table input** for crisper headers (Gemma downscales the whole
       page to ~896px, losing small header glyphs) — blocked: DeepSeek does not
       ground tables with boxes, so there is no clean table bbox to crop to
-      (`dev/docs/table-reconstruction-findings.md` §Notes).
+      (`dev/docs/table-reconstruction-findings.md` §Notes). The cost is now
+      quantified: 5 of 10 tables on a real paper carry structure damage,
+      concentrated in dense multi-header layouts
+      (`dev/docs/e2e-quality-findings.md` §Tables).
+- [ ] **Guard against silent structure damage** in restructured tables —
+      the worst observed failure is a syntactically clean table that silently
+      dropped an entire column group (Table 1 in
+      `dev/docs/e2e-quality-findings.md`; also per-row cell drift, row-label
+      misalignment). The old value-count check stays rejected (DeepSeek merges
+      cells, so the blob is no baseline), but options remain: prompt-level
+      column-count echo (pinned prompt — re-validate on real hardware before
+      touching, §9.7), a header-width vs page-image consistency probe, or at
+      minimum flagging wide/multi-header tables as low-confidence in the
+      transcription notice. Investigation item — no chosen design yet.
 - [ ] **System/user message split** of the table prompt (static instructions as
       a system message → llama-server prefix-cache reuse, possible adherence
       gain). The validated prompt is a single user message — re-validate on
@@ -82,14 +105,15 @@ Legend: `[ ]` todo · `[!]` blocked.
 
 ## Planned features
 
-- [ ] **BibTeX `auto` mode** — classify citability (provenance heuristics +
-      a cached LLM probe) → source chain (Semantic Scholar by arXiv ID,
-      preferring the published version when one exists → arXiv export API
-      fallback → S2 title search → local best-effort entry). Network intent
-      comes from the existing `net.offline` knob (`--offline` ⇒ local
-      best-effort only). Full design + phased roadmap (B0–B4):
-      `PLAN-bibtex-auto.md`. Subsumes the arXiv half of the
-      alternate-sources item below.
+- [x] ~~**BibTeX `auto` mode**~~ — done 2026-06-10
+      (`dev/plans/PLAN-bibtex-auto.md` B0–B4): `bibtex.mode` tri-state
+      (legacy `enabled` alias), cached
+      text-only citability/metadata probe (pinned prompt validated on real
+      hardware — `dev/docs/bibtex-probe-findings.md`, 4/4 PASS), provenance-
+      first chain (S2-by-arXiv-ID preferring the published version → arXiv
+      export API → S2 title search → local best-effort `@misc`), default
+      flipped to `auto`. Spec: DESIGN §12. Deferred refinements
+      (`--bibtex-source`, Crossref, by-DOI, type inference, …): DESIGN §22.2.
 - [ ] **Publish to PyPI** — the name `inscriber` was verified available
       (DESIGN §18) but nothing is published yet; README documents source
       install until then.
@@ -99,8 +123,10 @@ Legend: `[ ]` todo · `[!]` blocked.
 - [ ] **Alternate BibTeX sources** — Crossref / arXiv API as fallbacks to
       Semantic Scholar (unauthenticated 429s are common in practice; the
       degrade path is DESIGN §12), or fully-offline extraction from the paper's
-      own reference list. The arXiv-by-ID source is planned as phase B3 of
-      `PLAN-bibtex-auto.md`; Crossref and reference-list extraction remain.
+      own reference list. The arXiv half shipped 2026-06-10 with BibTeX `auto`
+      (S2-by-arXiv-ID + the arXiv export API fallback, DESIGN §12.1); Crossref,
+      S2-by-DOI for bioRxiv/medRxiv, and reference-list extraction remain
+      (DESIGN §22.2).
 
 ## Code debts (2026-06-10 implementation review)
 
