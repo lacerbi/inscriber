@@ -76,10 +76,10 @@ Legend: `[ ]` todo · `[!]` blocked.
 
 - [ ] **BibTeX `auto` mode** — classify citability (provenance heuristics +
       a cached LLM probe) → source chain (arXiv-by-ID → Semantic Scholar →
-      local best-effort entry), with a privacy taint rule so a local-PDF run
-      stays fully offline by default. Full design + phased roadmap (B0–B4):
-      `PLAN-bibtex-auto.md`. Subsumes the arXiv half of the alternate-sources
-      item below.
+      local best-effort entry). Network intent comes from the existing
+      `net.offline` knob (`--offline` ⇒ local best-effort only). Full design
+      + phased roadmap (B0–B4): `PLAN-bibtex-auto.md`. Subsumes the arXiv
+      half of the alternate-sources item below.
 - [ ] **Publish to PyPI** — the name `inscriber` was verified available
       (DESIGN §18) but nothing is published yet; README documents source
       install until then.

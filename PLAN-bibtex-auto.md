@@ -29,19 +29,23 @@ first-class).
 
 1. **`auto` becomes the default** (end state; flipped only in the final phase,
    after hardware validation). Consequence: the classifier errs toward
-   *abstaining* — with a default-on feature, a false positive (unwanted
-   `.bib` / unwanted network call) is worse than a false negative. Every
+   *abstaining* — with a default-on feature, a false positive (an unwanted
+   `.bib` file) is worse than a false negative. Every
    "judged not citable" decision is a visible log line, never silent.
-2. **Privacy taint rule** (resolves the conflict with DESIGN §20 / README's
-   "only URL input and opt-in `--bibtex` touch the network"): in `auto`, online
-   sources are attempted **only when the run is already network-tainted** — the
-   input came through a URL (`ResolvedInput.source == "url"`, or the bundle's
-   `source.source == "url"` for `describe`). A local-PDF run in `auto` does
-   classification + local best-effort only; **nothing leaves the machine with
-   zero flags**. Explicit `mode = "on"` (or `--bibtex`) always unlocks the
-   online chain, as today. `--offline` disables online sources in every mode
-   (the probe and best-effort are loopback-local and stay available, per
-   DESIGN §15's "`--offline` does not gate the local servers").
+2. **Network intent comes from the existing knob, nothing new.** The project's
+   privacy stance is that the *models and documents* are local — documents
+   never go to a cloud model; ordinary network use (downloading a PDF, sending
+   a title string to a citation API) is not the sensitive part. `net.offline`
+   (`--offline`, network **on** by default) already expresses the user's
+   intent, so `auto` reads exactly that: network on → the full source chain,
+   online lookups included; `--offline` → probe + local best-effort only (the
+   probe and best-effort are loopback-local and stay available, per DESIGN
+   §15's "`--offline` does not gate the local servers"). If the network is
+   "on" but actually unreachable, each online source simply fails and the
+   chain falls through to best-effort — no separate detection. Docs (DESIGN
+   §20 / README) are updated in B4 to state that default-`auto` BibTeX may
+   consult citation APIs with the **extracted title only** — the document
+   itself never leaves the machine.
 3. **No `--bibtex-source` flag yet.** The source chain is an internal,
    code-level seam (so a source-selection axis is purely additive later);
    `auto + --offline` already covers "local only".
@@ -62,8 +66,9 @@ first-class).
 
 - **In**: `bibtex.mode` tri-state config/CLI; the LLM citability+metadata probe
   (text-only VLM call, cached, pinned prompt); local best-effort entry
-  assembly; arXiv-by-ID source; the `auto` orchestration (taint rule, degrade
-  paths); default flip + full docs ripple; mocked tests throughout.
+  assembly; arXiv-by-ID source; the `auto` orchestration (offline-knob
+  intent, degrade paths); default flip + full docs ripple; mocked tests
+  throughout.
 - **Out (future refinements — add to `TODO.md` when this lands)**: a
   `--bibtex-source` CLI axis; Crossref as an additional source; structure-based
   citability heuristics (references-section detection) beyond provenance;
@@ -84,8 +89,8 @@ Pipeline wiring (both `_run_body` and `describe`): a new `_bibtex_probe(...)`
 step runs **inside the open `_VlmSession` block** (after `_vlm_describe`), so
 the probe shares the already-resident VLM server instead of forcing a relaunch
 at step 9; its `ProbeResult` is threaded into `_bibtex_outputs(...)`, which
-grows a `mode`/`probe`/`tainted` view but keeps its signature shape (never
-fails the run). Cache-first like every VLM pass: a fully-cached document still
+grows a `mode`/`probe` view but keeps its signature shape (never fails the
+run). Cache-first like every VLM pass: a fully-cached document still
 never launches a server. (Known wart, accepted: a run with figures and tables
 fully cached but a probe miss launches the VLM server for one small call —
 once, then it's cached.)
@@ -273,21 +278,22 @@ and partially delivers TODO's "alternate BibTeX sources").
      mangled OCR `# Title` heading). No mock on failure — fall through.
   5. `best_effort_bibtex(probe)`.
   6. Else `(None, reason)`.
-- `pipeline.py` — `_bibtex_outputs` grows the `auto` branch: compute
-  `online_allowed = tainted and not cfg.net.offline` (decision 2; `tainted`
-  from `ResolvedInput.source`/bundle `source.source`), call the chain, write
-  `{base}.bib` + the optional fenced prepend exactly as today. Every outcome
-  is one INFO line: `BibTeX (auto): <wrote entry via arxiv | wrote best-effort
-  entry | document judged not citable; skipping | skipped: <reason>>`.
-  `mode == "on"` path untouched.
+- `pipeline.py` — `_bibtex_outputs` grows the `auto` branch:
+  `online_allowed = not cfg.net.offline` (decision 2 — the existing knob is
+  the intent signal), call the chain, write `{base}.bib` + the optional
+  fenced prepend exactly as today. Every outcome is one INFO line:
+  `BibTeX (auto): <wrote entry via arxiv | wrote best-effort entry | document
+  judged not citable; skipping | skipped: <reason>>`. `mode == "on"` path
+  untouched.
 
 **Verification**:
 - [ ] `test_bibtex_chain.py` (new, httpx mocked): chain order and every
       fall-through (arXiv ok / arXiv 500 → S2 / S2 empty → best-effort /
-      nothing → skip); taint rule (local PDF never calls httpx in `auto`;
-      URL-sourced does; `--offline` blocks both but still best-efforts);
-      probe-says-no short-circuits even with an arXiv URL; describe-mode
-      taint read from the bundle.
+      nothing → skip); network-unreachable mid-chain (httpx raises) degrades
+      to best-effort, never fails the run; `--offline` makes no httpx call
+      but still best-efforts; probe-says-no short-circuits even with an
+      arXiv URL; describe-mode arXiv ID read from the bundle's
+      `original_url`.
 - [ ] `test_pipeline_mocked.py`: `run` and `ocr`→`describe` in `auto` produce
       the same `.bib` (probe cache keys shared via verbatim bundle text).
 
@@ -311,13 +317,17 @@ default to `auto`, and land the full documentation ripple as one change.
   (table-pass discipline).
 - Flip `BibtexConfig.mode` default → `"auto"`.
 - Docs (same change — AGENTS.md rule):
-  - `DESIGN.md` §12 rewritten around mode/chain/probe/taint (+ "Last
-    updated" header note); §13.1/§13.2/§13.3 (`bibtex.mode` ↔
-    `--bibtex-mode`, `--bibtex` alias); §20 privacy (the taint rule wording);
-    §24 rows 14–16 note that parity applies to `on` mode; §22 future-work
-    cross-reference for Crossref/source-axis.
-  - `README.md`: options table, privacy section ("a local-PDF run sends
-    nothing over the network, even with BibTeX auto on"), usage examples.
+  - `DESIGN.md` §12 rewritten around mode/chain/probe (+ "Last updated"
+    header note); §13.1/§13.2/§13.3 (`bibtex.mode` ↔ `--bibtex-mode`,
+    `--bibtex` alias); §20 privacy reworded: the local guarantee is about
+    **documents and models** (nothing ever goes to a cloud model);
+    default-`auto` BibTeX may consult citation APIs with the extracted
+    title only, and `--offline` disables that; §24 rows 14–16 note that
+    parity applies to `on` mode; §22 future-work cross-reference for
+    Crossref/source-axis.
+  - `README.md`: options table, privacy section (same reframing — the
+    document never leaves the machine; citation lookups send a title
+    string, off under `--offline`), usage examples.
   - `config.example.toml`: `[bibtex] mode = "auto"` + comments.
   - `AGENTS.md`: add the probe to the mock-discrimination list.
   - `TODO.md`: mark the alternate-sources item partially done (arXiv ✓,
@@ -327,13 +337,15 @@ default to `auto`, and land the full documentation ripple as one change.
 
 **Verification**:
 - [ ] Findings recorded in `dev/docs/bibtex-probe-findings.md`; prompt frozen.
-- [ ] Default-`auto` + local PDF: zero network calls (assert no httpx in
-      mocked e2e); default-`auto` + URL input: online chain attempted.
+- [ ] Default-`auto` e2e (mocked): citable doc → `.bib` written via the
+      chain; non-citable probe → skip with the INFO line; `--offline` →
+      best-effort only, no httpx call.
 - [ ] Full suite green on the flipped default (existing tests that assumed
       "no `.bib` unless `--bibtex`" updated deliberately, not incidentally).
 
-**Exit gate**: README/DESIGN privacy promises and actual default behavior
-agree; only then does the default flip ship.
+**Exit gate**: README/DESIGN describe the actual default behavior (documents
+and models stay local; citation lookups are title-only and `--offline`-gated);
+only then does the default flip ship.
 
 ---
 
@@ -344,9 +356,10 @@ agree; only then does the default flip ship.
   high-value cases even when the probe is wrong; B4 explicitly tests
   non-citable documents before the flip; worst case is an unwanted-but-marked
   `.bib` file, never a wrong pipeline output.
-- **Privacy regression by default-flip** (the headline promise). *Mitigation*:
-  the taint rule is implemented and tested (B3) before the flip (B4); the
-  no-network assertion is a CI test, not a doc claim.
+- **Doc drift on the default flip** (README/DESIGN §20 currently say "only
+  URL input and opt-in `--bibtex` touch the network"). *Mitigation*: the B4
+  docs reframing (documents/models local; title-only lookups, `--offline`
+  gates them) ships in the same change as the flip — the exit gate.
 - **JSON adherence from a thinking model** (fences, commentary). *Mitigation*:
   fence-tolerant strict parsing, `None`-on-anything-else, never cached, chain
   degrades to provenance/skip — same failure philosophy as the table pass.
