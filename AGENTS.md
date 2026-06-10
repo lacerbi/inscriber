@@ -56,11 +56,14 @@ context must see clean tables; the text-only probe shares the open VLM
 session) → stitch/clean → split (main/appendix/backmatter) → BibTeX (default
 `auto`: provenance/probe citability → source chain; DESIGN §12) → write.
 
-- **Three subcommands**: `run` (end-to-end), `ocr` (writes a portable _bundle_:
-  `manifest.json` + `figures/` crops + `pages/` rasters for table pages), and
-  `describe` (bundle → VLM + assembly, no OCR model). `run` = `ocr` + `describe`
-  sharing in-memory objects. The bundle's `bundle_schema` int is the
-  compatibility gate; new manifest fields must be additive or bump it.
+- **Four subcommands**: `run` (end-to-end), `ocr` (writes a portable _bundle_:
+  `manifest.json` + `figures/` crops + `pages/` rasters for table pages),
+  `describe` (bundle → VLM + assembly, no OCR model), and `join` (rejoin
+  possibly hand-edited `{base}.main/.appendix/.backmatter.md` splits into
+  `{base}.md` — the §11 allparts form; pure text, no models/config needed).
+  `run` = `ocr` + `describe` sharing in-memory objects. The bundle's
+  `bundle_schema` int is the compatibility gate; new manifest fields must be
+  additive or bump it.
 - **Sequential single-model-resident by default**: the OCR server is torn down
   before the VLM server starts. Both VLM passes (tables, figures) share one
   lazily-launched server (`_VlmSession`) that only starts on the first cache

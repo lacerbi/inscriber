@@ -1,7 +1,7 @@
 """Command-line interface (DESIGN §13.2).
 
-Three subcommands — ``run`` (default), ``ocr``, ``describe`` — sharing flag
-groups. Bare ``inscriber INPUT`` is shorthand for ``inscriber run INPUT``.
+Four subcommands — ``run`` (default), ``ocr``, ``describe``, ``join`` — sharing
+flag groups. Bare ``inscriber INPUT`` is shorthand for ``inscriber run INPUT``.
 
 Every config field is overridable by a flag (the §1.2 "every field overridable"
 contract); unset flags default to ``None`` here so :func:`config.resolve_config`
@@ -24,7 +24,7 @@ from inscriber.config import (
 from inscriber.errors import InscriberError
 from inscriber.logging import get_logger, setup_logging
 
-SUBCOMMANDS = ("run", "ocr", "describe")
+SUBCOMMANDS = ("run", "ocr", "describe", "join")
 
 
 def _ngl(value: str):
@@ -155,10 +155,14 @@ def build_parser() -> argparse.ArgumentParser:
         description="Convert academic PDFs into LLM-friendly text-only Markdown, locally.",
     )
     parser.add_argument("--version", action="version", version=f"inscriber {__version__}")
-    sub = parser.add_subparsers(dest="command", required=True, metavar="{run,ocr,describe}")
+    sub = parser.add_subparsers(
+        dest="command", required=True, metavar="{run,ocr,describe,join}"
+    )
 
     # run — end-to-end (default)
-    p_run = sub.add_parser("run", help="end-to-end OCR → describe → write (default)")
+    # Help strings must stay ASCII: a piped/redirected stdout on Windows falls
+    # back to cp1252, where printing e.g. U+2192 crashes argparse's print_help.
+    p_run = sub.add_parser("run", help="end-to-end OCR -> describe -> write (default)")
     p_run.set_defaults(command="run")
     _add_common(p_run)
     p_run.add_argument("input", metavar="INPUT", help="PDF file path or http(s) URL")
@@ -171,7 +175,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_caching(p_run)
 
     # ocr — OCR + crop → write bundle, stop
-    p_ocr = sub.add_parser("ocr", help="OCR + figure crop → write OCR bundle, stop")
+    p_ocr = sub.add_parser("ocr", help="OCR + figure crop -> write OCR bundle, stop")
     p_ocr.set_defaults(command="ocr")
     _add_common(p_ocr)
     p_ocr.add_argument("input", metavar="INPUT", help="PDF file path or http(s) URL")
@@ -182,7 +186,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_caching(p_ocr)
 
     # describe — OCR bundle → VLM + assemble + write
-    p_desc = sub.add_parser("describe", help="OCR bundle → VLM describe + assemble + write")
+    p_desc = sub.add_parser("describe", help="OCR bundle -> VLM describe + assemble + write")
     p_desc.set_defaults(command="describe")
     _add_common(p_desc)
     p_desc.add_argument("input", metavar="BUNDLE", help="path to a *.inscriber-ocr dir")
@@ -190,6 +194,25 @@ def build_parser() -> argparse.ArgumentParser:
     _add_vlm_stage(p_desc)
     _add_output_stage(p_desc)
     _add_caching(p_desc)
+
+    # join — rejoin (possibly hand-edited) split files into {base}.md
+    p_join = sub.add_parser(
+        "join", help="rejoin {base}.main/.appendix/.backmatter.md into {base}.md"
+    )
+    p_join.set_defaults(command="join")
+    p_join.add_argument(
+        "input", metavar="BASE",
+        help="base path (out/paper), the {base}.main.md file, or a directory "
+             "containing exactly one set of splits",
+    )
+    p_join.add_argument("-c", "--config", dest="config", default=None, metavar="PATH",
+                        help="config file (default: ./config.toml, then platform config dir)")
+    p_join.add_argument("--no-clobber", dest="clobber", action="store_const", const=False,
+                        default=None, help="error instead of overwriting {base}.md")
+    p_join.add_argument("-v", "--verbose", action="count", default=0,
+                        help="verbose logging (DEBUG)")
+    p_join.add_argument("-q", "--quiet", action="store_true", default=False,
+                        help="quiet logging (WARNING)")
 
     return parser
 
@@ -337,6 +360,8 @@ def main(argv: list[str] | None = None) -> int:
             written = pipeline.run_ocr(cfg)
         elif cfg.command == "describe":
             written = pipeline.describe(cfg)
+        elif cfg.command == "join":
+            written = pipeline.join_splits(cfg)
         else:  # pragma: no cover - argparse guarantees a valid command
             parser.error(f"unknown command {cfg.command!r}")
             return 2

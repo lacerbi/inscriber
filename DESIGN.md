@@ -12,7 +12,14 @@
 > `paper2llm`). It is written to be read entirely standalone — every concept,
 > dependency, and external quirk needed to build v1 is described here.
 >
-> **Last updated:** 2026-06-10 (§12/§13.1: the **legacy `[bibtex] enabled`
+> **Last updated:** 2026-06-10 (§3.1/§11/§13.2: new **`inscriber join BASE`
+> subcommand** — rejoin (possibly hand-edited) `{base}.main/.appendix/
+> .backmatter.md` splits into `{base}.md`, the §11 allparts form: per-file
+> notice footers and main's BibTeX block are stripped, the parts joined in
+> allparts order, and the block + ONE regenerated notice re-applied; model-
+> and config-free (`postprocess/join.py`, pinned by `tests/test_join.py`).
+> Enables the fix-once workflow: correct the splits, `join`, the full document
+> follows. Also — §12/§13.1: the **legacy `[bibtex] enabled`
 > config key is removed** — pre-release, nothing in the wild to migrate;
 > `mode` is the only knob, and an `enabled` key under `[bibtex]` is now
 > ignored like any other unknown key. Earlier same day — §2.2/§9.7: **cropped table input VALIDATED on
@@ -428,6 +435,12 @@ differences are attributable purely to the VLM. As a bonus, the bundle's per-pag
 markdown is **hand-editable** before `describe` (fix an OCR glitch once, then try
 N VLMs). `run` is semantically `ocr` immediately followed by `describe`, sharing
 the same serialization (§8.6).
+
+A fourth, model-free utility subcommand rounds out the surface:
+**`inscriber join BASE`** rejoins the (possibly hand-edited) split files
+`{base}.main/.appendix/.backmatter.md` into `{base}.md` — the §11 allparts
+assembly — so post-OCR corrections can be applied **once, to the splits**, and
+the full document regenerated instead of edited in parallel (§11).
 
 ---
 
@@ -1439,6 +1452,23 @@ reordering**: although backmatter precedes appendix _positionally_ in the source
 This is the basis for the standalone full file (§14) and the
 append-BibTeX-to-document option (§12).
 
+**`inscriber join BASE` (the rejoin subcommand).** Reads
+`{base}.main/.appendix/.backmatter.md` (BASE = a base path, the `.main.md`
+file, or a directory holding exactly one set of splits) and regenerates
+`{base}.md` next to them — no models, servers, or config required. The
+standalone split files already carry the allparts framing, so joining strips
+each file's **per-file extras** — the transcription-notice footer, and main's
+prepended BibTeX block — concatenates in the allparts order above, then
+re-prepends the BibTeX block and re-appends **one** regenerated notice (a
+notice crediting "OCR and VLMs" on any split carries VLM involvement into the
+joined notice). The intended workflow: hand-correct the splits once, `join`,
+and the full document follows — instead of applying every fix twice. ⚠️ The
+joined document is the **allparts form**: appendix precedes backmatter under
+derived headings, which deliberately differs from `run`'s original `{base}.md`
+(source order, original headings) — rejoining from splits cannot recover
+source order. Implementation: `postprocess/join.py`; `pipeline.join_splits`;
+pinned by `tests/test_join.py`.
+
 ---
 
 ## 12. BibTeX (`bibtex/`)
@@ -1701,18 +1731,22 @@ offline = false                        # hard-disable all network use (the local
 
 ### 13.2 CLI surface (`cli.py`, argparse subparsers)
 
-Three subcommands (§3.1). `run` is the default — bare `inscriber INPUT` ≡
+Four subcommands (§3.1). `run` is the default — bare `inscriber INPUT` ≡
 `inscriber run INPUT`. Flags below are grouped by the stage they affect; each
-subcommand accepts only the groups relevant to it.
+subcommand accepts only the groups relevant to it (`join` takes only
+`-c`, `--no-clobber`, `-v`/`-q`).
 
 ```
 inscriber run     INPUT [options]     # end-to-end (default)
 inscriber ocr     INPUT [ocr-options] # OCR + crop → write OCR bundle, stop
 inscriber describe BUNDLE [vlm-options]# OCR bundle → VLM + assemble + write
+inscriber join    BASE                # rejoin {base}.main/.appendix/.backmatter.md
+                                      #   into {base}.md (allparts form, §11)
 
   # --- common ---
   INPUT                         PDF file path or http(s) URL   (run, ocr)
   BUNDLE                        path to a *.inscriber-ocr dir   (describe)
+  BASE                          base path, {base}.main.md, or splits dir (join)
   -c, --config PATH             config file (default: ./config.toml, then platform config dir)
   -o, --output-dir DIR          output directory (default: cwd)
       --pages RANGE             1-indexed inclusive, e.g. "1-10","3","5-","-12","all" (run, ocr)
@@ -1832,7 +1866,9 @@ OUT/
   domain handler's `file_name(url)`; for `describe`, `manifest.source.name`
   (no PDF present, §8.5). Sanitize so a source literally named `paper.main.pdf`
   can't collide with the `paper.main.md` split output.
-- `paper.md` is the **full** document (the enhanced, stitched markdown).
+- `paper.md` is the **full** document (the enhanced, stitched markdown). After
+  hand-editing the splits, `inscriber join OUT/paper` regenerates it from them
+  (in the §11 allparts form).
 - **Two distinct `figures/` dirs:** the **bundle** always has one (crops are made
   at `ocr` time, before `mode` is chosen — §8.5); the **output** dir gets one only
   when `figure.mode = describe-and-keep` (the only mode that references crops),
@@ -1932,6 +1968,10 @@ the inference layer at the **chat-client boundary**.
   PDF with an embedded raster figure yields a crop + appended placeholder (§8.4).
 - **`test_splitter.py`** — section-detection on a battery of synthetic markdown
   docs (with/without appendix, backmatter, the `A ` edge case, page markers).
+- **`test_join.py`** — the `join` subcommand (§11): allparts round-trip from
+  pipeline-shaped splits, single regenerated notice (+ VLM-involvement
+  inference), BibTeX-block re-prepend, hand-edit/CRLF tolerance, BASE
+  resolution errors, CLI clobber behavior.
 - **`test_stitch.py`** — header/footer stripping & de-hyphenation on crafted
   multi-page inputs.
 - **`test_config.py`** — TOML load, CLI-override precedence, validation errors

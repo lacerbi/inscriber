@@ -74,6 +74,7 @@ from inscriber.postprocess.inject import (
     ensure_placeholders,
     inject_descriptions,
 )
+from inscriber.postprocess.join import join_split_files, resolve_join_input
 from inscriber.postprocess.notice import append_transcription_notice
 from inscriber.postprocess.prompt import build_page_context
 from inscriber.postprocess.splitter import (
@@ -1087,3 +1088,19 @@ def run(cfg: RunConfig) -> list[str]:
             with vlm_mgr.serve(vlm_spec) as vlm_url:
                 return _run_body(cfg, resolved, base, out_dir, work, vlm_endpoint=vlm_url)
         return _run_body(cfg, resolved, base, out_dir, work)
+
+
+def join_splits(cfg: RunConfig) -> list[str]:
+    """Rejoin split files into ``{base}.md`` (DESIGN §11 — the allparts form).
+
+    No models, servers, or PDF involved — a pure text reassembly, written next
+    to the splits. ``cfg.input`` is the BASE argument (base path, ``.main.md``
+    file, or directory); ``cfg.output.clobber`` governs overwriting.
+    """
+    main_path = resolve_join_input(Path(cfg.input).expanduser())
+    content = join_split_files(main_path)
+    base = main_path.name[: -len(".main.md")]
+    out_path = write_text_file(
+        main_path.with_name(f"{base}.md"), content, clobber=cfg.output.clobber
+    )
+    return [str(out_path)]

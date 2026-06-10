@@ -66,11 +66,9 @@ Download a prebuilt release from
 build from source. `inscriber` only needs the directory containing
 `llama-server` (`llama-server.exe` on Windows).
 
-> ⚠️ **Use build 9587 or newer.** llama.cpp's model-side preprocessing
-> changes between builds — DeepSeek-OCR's grounding coordinate frame changed
-> at some point after build 9028 — so `inscriber` is pinned to the frame of
-> build 9587 (the verified one) and **refuses to run OCR against older
-> builds** rather than silently misplace figure crops.
+> ⚠️ **Use build 9587 or newer** — older builds handle DeepSeek-OCR images
+> differently and would misplace figure crops, so `inscriber` refuses to run
+> OCR against them.
 
 ### 2. Models
 
@@ -138,6 +136,34 @@ inscriber describe out/paper.inscriber-ocr --vlm-model other.gguf --vlm-mmproj o
 `pages/` rasters for pages with tables); `describe` runs the VLM stages from it
 with no OCR model loaded, so each VLM sees the identical input. The bundle's
 per-page markdown is hand-editable — fix an OCR glitch once, then try N VLMs.
+
+### Fix the splits, regenerate the full document
+
+All outputs are plain Markdown. To correct an OCR/VLM slip after the fact,
+edit the **split** files and rebuild the full document from them — no models
+needed:
+
+```bash
+inscriber join out/paper      # paper.main/.appendix/.backmatter.md → paper.md
+```
+
+`join` strips each split's footer notice (and the BibTeX block, if injected),
+concatenates main → appendix → backmatter, and re-applies the framing — so each
+fix is made once, not once per file. Note the regenerated `paper.md` uses the
+combined ordering (appendix before backmatter, under `# Title - Appendix`-style
+headings), which may differ from the original document order.
+
+### Convert + verify with Claude Code
+
+The repo ships a [Claude Code](https://claude.com/claude-code) skill,
+[`/inscribe`](.claude/skills/inscribe/SKILL.md), available when running Claude
+Code inside this repository. Given a PDF path or URL (plus any options in
+plain words), it runs `inscriber`, then checks the transcription against the
+source PDF in ≤10-page chunks with parallel subagents briefed on the known
+failure modes (table cells, subscripts, equations, truncated pages, figure
+descriptions), applies the fixes that matter to the split files, and rejoins
+them with `inscriber join`. Say "no verification" to stop after the
+conversion.
 
 ## Options
 
