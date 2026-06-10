@@ -95,6 +95,14 @@ Raw OCR of the table:
 This is the prompt that produced the correct 11-column / 3-level-header Table A6
 reconstruction (33/33 values, `Jena`/`Cali.` split correctly).
 
+**Message structure (likely refinement):** the static instructions (everything
+through the Guidelines) are identical for every table, while the locator, page-text
+context, and OCR blob are per-table. We may want to split this into a **system**
+message (the instructions) and a **user** message (the locator + page text + image
++ the table blob). That separates the fixed contract from the per-table inputs, may
+improve instruction adherence, and lets llama-server reuse the cached system-prompt
+prefix across all the tables on a page/run.
+
 ### What it achieves (over Tables 1, A6, A7 of the test paper)
 
 - **Data values: reliably correct** — 63/63 across a flat table, a 2-level-header
