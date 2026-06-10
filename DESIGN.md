@@ -1765,10 +1765,6 @@ is wired.
 - **Table reconstruction across page breaks** (§10.3) — currently a documented
   limitation.
 - **Batch mode** — process a directory of PDFs reusing a single warm server.
-- **Model auto-download helper** — optional command to fetch recommended GGUFs
-  from Hugging Face (kept out of the core, opt-in, online).
-- **Alternate BibTeX sources** — Crossref / arXiv API as fallbacks to Semantic
-  Scholar; or fully-offline extraction from the paper's own reference list.
 
 ---
 

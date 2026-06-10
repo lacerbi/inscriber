@@ -30,6 +30,15 @@ Legend: `[ ]` todo · `[!]` blocked.
       gain). The validated prompt is a single user message — re-validate on
       real hardware before adopting.
 
+## Planned features
+
+- [ ] **Model auto-download helper** — optional command to fetch the recommended
+      GGUFs from Hugging Face (kept out of the core pipeline; opt-in, online).
+- [ ] **Alternate BibTeX sources** — Crossref / arXiv API as fallbacks to
+      Semantic Scholar (unauthenticated 429s are common in practice; the
+      degrade path is DESIGN §12), or fully-offline extraction from the paper's
+      own reference list.
+
 ## Code debts (2026-06-10 implementation review)
 
 - [ ] **Consolidate the duplicated VLM-pass scaffolding** between
