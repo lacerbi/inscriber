@@ -64,6 +64,11 @@ class Bundle:
     def source_name(self) -> str:
         return self.source.get("name", "paper")
 
+    @property
+    def original_url(self) -> str | None:
+        """The source URL recorded at ``ocr`` time (BibTeX provenance, DESIGN §12)."""
+        return self.source.get("original_url")
+
 
 def bundle_dir_for(out_dir: str | Path, base_name: str) -> Path:
     return Path(out_dir) / f"{base_name}{BUNDLE_SUFFIX}"

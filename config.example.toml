@@ -118,13 +118,25 @@ path = ""
 keep_intermediates = false
 
 [bibtex]
-# Uses Semantic Scholar and therefore needs network access. Keep false for a
-# fully local/offline core pipeline.
-enabled = false
+# auto — (default) decide whether the document is citable (source-URL
+#        provenance, else a local VLM probe of the front matter), then walk
+#        the source chain: Semantic Scholar by arXiv ID (prefers the published
+#        version) -> arXiv export API -> S2 title search -> local best-effort
+#        entry. Online lookups send only the extracted title / arXiv ID — the
+#        document itself never leaves the machine. Under --offline only the
+#        local probe + best-effort entry run.
+# on   — always look the paper up via Semantic Scholar title search (needs
+#        network; the --bibtex flag is an alias for this mode).
+# off  — no BibTeX.
+mode = "auto"
+# Legacy: a boolean `enabled = true/false` is still read as mode = "on"/"off"
+# (deprecated; `mode` wins if both are set).
 
-# When enabled, prepend the BibTeX block into the generated Markdown too.
+# When an entry is produced, prepend the BibTeX block into the generated
+# Markdown too.
 append_to_document = false
 
 [net]
-# true disables URL downloads and BibTeX lookup.
+# true disables URL downloads and the online BibTeX sources (the local BibTeX
+# probe and best-effort entry still run — they never touch the network).
 offline = false

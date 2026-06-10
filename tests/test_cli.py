@@ -36,3 +36,19 @@ def test_missing_input_returns_1(tmp_path):
     # A nonexistent input PDF is an InputError -> CLI maps it to a clean exit 1.
     rc = main(["run", str(tmp_path / "x.pdf")])
     assert rc == 1
+
+
+def test_bibtex_mode_flag_wiring():
+    # --bibtex-mode is the full knob; --bibtex stays a back-compat alias for "on"
+    # and loses to an explicit --bibtex-mode (PLAN-bibtex-auto B0).
+    from inscriber.cli import build_parser, collect_cli_sections
+
+    args = build_parser().parse_args(["run", "p.pdf", "--bibtex-mode", "auto"])
+    assert collect_cli_sections(args)["bibtex"]["mode"] == "auto"
+    args = build_parser().parse_args(["run", "p.pdf", "--bibtex"])
+    assert collect_cli_sections(args)["bibtex"]["mode"] == "on"
+    args = build_parser().parse_args(["run", "p.pdf", "--bibtex", "--bibtex-mode", "off"])
+    assert collect_cli_sections(args)["bibtex"]["mode"] == "off"
+    # not passed at all -> no override emitted (config/default applies)
+    args = build_parser().parse_args(["run", "p.pdf"])
+    assert "mode" not in collect_cli_sections(args).get("bibtex", {})

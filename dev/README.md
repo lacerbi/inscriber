@@ -10,6 +10,8 @@
   `table-reconstruction-findings.md` (the experiment behind the table
   -restructuring pass, DESIGN §9.7), `integration-test.md` (manual release
   validation against real models).
+- **`plans/`** — archived feature plans, kept after execution as design
+  records; the durable spec for shipped work lives in the root `DESIGN.md`.
 
 User-facing documentation is the root `README.md`; the authoritative
 specification is the root `DESIGN.md` (with `PLAN-inscriber-v1.md` as the build

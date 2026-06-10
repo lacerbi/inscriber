@@ -23,6 +23,7 @@ from pathlib import Path
 import platformdirs
 
 from inscriber.errors import InscriberError
+from inscriber.logging import get_logger
 from inscriber.models import (
     BibtexConfig,
     CacheConfig,
@@ -45,6 +46,9 @@ except ModuleNotFoundError:  # pragma: no cover - exercised only on <3.11
     import tomli as tomllib  # type: ignore[no-redef]
 
 
+logger = get_logger()
+
+
 class ConfigError(InscriberError):
     """Raised on any structural or path-existence configuration error."""
 
@@ -52,6 +56,7 @@ class ConfigError(InscriberError):
 _FIGURE_DETECT = {"auto", "grounding", "none", "pdf-embedded"}
 _FIGURE_MODE = {"describe-only", "describe-and-keep", "placeholder"}
 _INFERENCE_MODE = {"sequential", "concurrent"}
+_BIBTEX_MODE = {"off", "on", "auto"}
 _RESOLUTIONS = {m.value for m in ResolutionMode}
 
 # section name -> dataclass; the merge applies known fields only.
@@ -126,6 +131,25 @@ def _build_section(cls: type, file_section: dict | None, cli_section: dict | Non
     return cls(**kwargs)
 
 
+def _bibtex_legacy_alias(section: dict) -> dict:
+    """Map the legacy ``[bibtex] enabled`` bool onto the ``mode`` tri-state.
+
+    Machine-local configs predating the tri-state exist in the wild; read them
+    with a deprecation warning. ``mode`` wins when both keys are present.
+    """
+    if "enabled" not in section:
+        return section
+    section = dict(section)
+    enabled = section.pop("enabled")
+    if "mode" in section:
+        logger.warning('[bibtex] enabled is deprecated and ignored (mode is set); remove it')
+    else:
+        mode = "on" if enabled else "off"
+        section["mode"] = mode
+        logger.warning('[bibtex] enabled is deprecated; interpreting it as mode = "%s"', mode)
+    return section
+
+
 def resolve_config(
     *,
     command: str,
@@ -138,6 +162,8 @@ def resolve_config(
     quiet: bool = False,
 ) -> RunConfig:
     """Merge defaults < file < CLI into a fully-resolved :class:`RunConfig`."""
+    if isinstance(file_dict.get("bibtex"), dict):
+        file_dict = {**file_dict, "bibtex": _bibtex_legacy_alias(file_dict["bibtex"])}
     sections = {
         name: _build_section(cls, file_dict.get(name), cli_sections.get(name))
         for name, cls in _SECTIONS.items()
@@ -186,6 +212,11 @@ def validate_structural(cfg: RunConfig) -> None:
         errors.append(
             f"inference.mode {cfg.inference.mode!r} invalid; "
             f"choose one of {sorted(_INFERENCE_MODE)}"
+        )
+    if cfg.bibtex.mode not in _BIBTEX_MODE:
+        errors.append(
+            f"bibtex.mode {cfg.bibtex.mode!r} invalid; "
+            f"choose one of {sorted(_BIBTEX_MODE)}"
         )
     if cfg.ocr.backend not in known_ocr_backends():
         errors.append(

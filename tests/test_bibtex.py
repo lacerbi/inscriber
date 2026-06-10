@@ -1,10 +1,12 @@
-"""M4: BibTeX generation (DESIGN §12)."""
+"""M4: BibTeX generation (DESIGN §12) + the auto-mode best-effort entry."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
 from inscriber.bibtex import semantic_scholar as ss
+from inscriber.bibtex.local import best_effort_bibtex
+from inscriber.bibtex.probe import ProbeResult
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -111,3 +113,53 @@ def test_generate_prepends_mismatch_warning(monkeypatch):
 
 def test_sanitize_escapes_specials():
     assert ss.sanitize_bibtex_text("A & B_C") == "A \\& B\\_C"
+
+
+# --------------------------------------------------------------------------- #
+# Best-effort @misc entry (auto mode, PLAN-bibtex-auto B2)
+# --------------------------------------------------------------------------- #
+
+
+def test_best_effort_full_metadata_matches_canonical_fixture():
+    probe = ProbeResult(
+        citable=True,
+        title="Attention Is All You Need",
+        authors=["Ada Lovelace", "Charles Babbage"],
+        year="2017",
+        venue="NeurIPS",
+    )
+    expected = (FIXTURES / "bibtex_best_effort.txt").read_text(encoding="utf-8")
+    assert best_effort_bibtex(probe) == expected.rstrip("\n")
+
+
+def test_best_effort_partial_metadata_omits_fields():
+    # Transcription, not recall (decision 5): absent fields are absent — no
+    # "Unknown Author" / "Unknown Journal" filler; venue goes in note, never journal.
+    out = best_effort_bibtex(ProbeResult(citable=True, title="Sparse Title Only"))
+    assert out is not None
+    assert out.startswith("% NOTE: Best-effort entry")
+    assert "@misc{" in out
+    assert "title={Sparse Title Only}" in out
+    assert "author=" not in out
+    assert "year=" not in out
+    assert "journal=" not in out
+    assert "Unknown" not in out.split("@misc{", 1)[1].split(",", 1)[1]  # fields only
+
+
+def test_best_effort_requires_title():
+    assert best_effort_bibtex(None) is None
+    assert best_effort_bibtex(ProbeResult(citable=True, authors=["A B"])) is None
+
+
+def test_best_effort_sanitizes_fields():
+    probe = ProbeResult(
+        citable=True,
+        title="Results & Methods — “quoted”",
+        authors=["Mary O_Connor"],
+        venue="Conf & Expo",
+    )
+    out = best_effort_bibtex(probe)
+    assert out is not None
+    assert "title={Results \\& Methods --- ``quoted``}" in out
+    assert "author={Mary O\\_Connor}" in out
+    assert "note={Conf \\& Expo}" in out

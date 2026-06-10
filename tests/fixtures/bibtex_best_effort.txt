@@ -1,0 +1,9 @@
+% NOTE: Best-effort entry generated from the document's own front matter
+% by inscriber (no citation database was consulted). Verify before use.
+%
+@misc{lovelace2017attention,
+  title={Attention Is All You Need},
+  author={Ada Lovelace and Charles Babbage},
+  year={2017},
+  note={NeurIPS}
+}

@@ -127,6 +127,10 @@ def _add_output_stage(p: argparse.ArgumentParser) -> None:
                    default=None, help="omit the OCR/VLM caveat footer")
     p.add_argument("--bibtex", dest="bibtex", action="store_const", const=True,
                    default=None, help="fetch BibTeX (requires network)")
+    p.add_argument("--bibtex-mode", dest="bibtex_mode", choices=("off", "on", "auto"),
+                   default=None,
+                   help="BibTeX mode: off | on (always look up; --bibtex is an alias) "
+                        "| auto (classify citability, then the source chain)")
     p.add_argument("--bibtex-in-doc", dest="bibtex_in_doc", action="store_const",
                    const=True, default=None, help="also inject the BibTeX entry into the document")
     p.add_argument("--offline", dest="offline", action="store_const", const=True,
@@ -254,8 +258,8 @@ def collect_cli_sections(args: argparse.Namespace) -> dict[str, dict]:
     # workdir
     setv("workdir", "path", g("workdir"))
     setv("workdir", "keep_intermediates", g("keep_intermediates"))
-    # bibtex
-    setv("bibtex", "enabled", g("bibtex"))
+    # bibtex: --bibtex-mode wins over the --bibtex back-compat alias (= mode "on")
+    setv("bibtex", "mode", g("bibtex_mode") or ("on" if g("bibtex") else None))
     setv("bibtex", "append_to_document", g("bibtex_in_doc"))
     # net
     setv("net", "offline", g("offline"))

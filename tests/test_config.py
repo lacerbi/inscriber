@@ -76,7 +76,7 @@ def test_defaults_match_design():
     assert rc.cache.refresh is False
     assert rc.workdir.path == ""
     assert rc.workdir.keep_intermediates is False
-    assert rc.bibtex.enabled is False
+    assert rc.bibtex.mode == "auto"  # flipped after B4 hardware validation
     assert rc.bibtex.append_to_document is False
     assert rc.net.offline is False
 
@@ -203,7 +203,7 @@ def test_every_field_overridable():
     assert rc.output.clean is False
     assert rc.output.clobber is False
     assert rc.output.notice is False
-    assert rc.bibtex.enabled is True
+    assert rc.bibtex.mode == "on"
     assert rc.bibtex.append_to_document is True
     assert rc.net.offline is True
     assert rc.cache.enabled is False
@@ -228,6 +228,70 @@ def test_ngl_rejects_bad_value():
 def test_no_figures_aliases_detect_none():
     rc = cfg_from(["run", "paper.pdf", "--no-figures"])
     assert rc.figure.detect == "none"
+
+
+# --------------------------------------------------------------------------- #
+# bibtex.mode tri-state (DESIGN §12; PLAN-bibtex-auto B0)
+# --------------------------------------------------------------------------- #
+
+
+def test_bibtex_mode_tristate_and_alias_precedence():
+    assert cfg_from(["run", "p.pdf", "--bibtex"]).bibtex.mode == "on"
+    assert cfg_from(["run", "p.pdf", "--bibtex-mode", "auto"]).bibtex.mode == "auto"
+    assert cfg_from(["run", "p.pdf", "--bibtex-mode", "off"]).bibtex.mode == "off"
+    # --bibtex-mode wins over the --bibtex back-compat alias:
+    assert cfg_from(["run", "p.pdf", "--bibtex", "--bibtex-mode", "off"]).bibtex.mode == "off"
+
+
+def test_bibtex_cli_overrides_config_file():
+    from inscriber.cli import build_parser, collect_cli_sections
+
+    args = build_parser().parse_args(["run", "p.pdf", "--bibtex"])
+    rc = resolve_config(
+        command=args.command, input_arg=args.input, config_path=None,
+        file_dict={"bibtex": {"mode": "auto"}},
+        cli_sections=collect_cli_sections(args),
+        pages=None, verbose=0, quiet=False,
+    )
+    assert rc.bibtex.mode == "on"
+
+
+def test_bibtex_legacy_enabled_alias(monkeypatch):
+    import types
+
+    from inscriber import config as config_module
+
+    warnings: list[str] = []
+    monkeypatch.setattr(
+        config_module, "logger",
+        types.SimpleNamespace(warning=lambda msg, *a: warnings.append(msg % a if a else msg)),
+    )
+    rc = resolve_config(
+        command="run", input_arg="p.pdf", config_path=None,
+        file_dict={"bibtex": {"enabled": True}}, cli_sections={},
+    )
+    assert rc.bibtex.mode == "on"
+    assert any("deprecated" in w for w in warnings)
+
+    rc = resolve_config(
+        command="run", input_arg="p.pdf", config_path=None,
+        file_dict={"bibtex": {"enabled": False}}, cli_sections={},
+    )
+    assert rc.bibtex.mode == "off"
+
+    # mode wins when both are present:
+    rc = resolve_config(
+        command="run", input_arg="p.pdf", config_path=None,
+        file_dict={"bibtex": {"enabled": True, "mode": "off"}}, cli_sections={},
+    )
+    assert rc.bibtex.mode == "off"
+
+
+def test_invalid_bibtex_mode_rejected():
+    rc = RunConfig(command="run", input="p.pdf")
+    rc.bibtex.mode = "always"
+    with pytest.raises(ConfigError, match="bibtex.mode"):
+        validate_structural(rc)
 
 
 def test_no_figures_wins_over_figure_detect():

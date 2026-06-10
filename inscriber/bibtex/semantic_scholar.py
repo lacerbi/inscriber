@@ -18,6 +18,7 @@ from inscriber.logging import get_logger
 logger = get_logger()
 
 API_URL = "https://api.semanticscholar.org/graph/v1/paper/search"
+LOOKUP_API_URL = "https://api.semanticscholar.org/graph/v1/paper/arXiv:{arxiv_id}"
 FIELDS = "title,authors,venue,year,abstract,externalIds,url"
 USER_AGENT = "inscriber/0.1 (+https://github.com/lacerbi/inscriber)"
 
@@ -111,6 +112,46 @@ def search_semantic_scholar(title: str, *, limit: int = 3, timeout: float = 30.0
     except ValueError:
         logger.warning("Semantic Scholar returned non-JSON; using fallback citation")
         return []
+
+
+def strip_arxiv_version(arxiv_id: str) -> str:
+    """``2510.18234v2`` → ``2510.18234`` (Semantic Scholar indexes the base ID)."""
+    return re.sub(r"v\d+$", "", arxiv_id)
+
+
+def lookup_arxiv(arxiv_id: str, *, timeout: float = 30.0) -> dict | None:
+    """Look a paper up by arXiv ID — an exact match, no title fuzziness; the
+    record carries the publication venue when one exists (the auto chain
+    prefers the published version of a preprint). ``None`` on any error / 429 /
+    no record (never raises)."""
+    url = LOOKUP_API_URL.format(arxiv_id=strip_arxiv_version(arxiv_id))
+    try:
+        resp = httpx.get(
+            url,
+            params={"fields": FIELDS},
+            timeout=timeout,
+            headers={"User-Agent": USER_AGENT},
+        )
+    except httpx.HTTPError as e:
+        logger.warning("Semantic Scholar arXiv lookup failed: %s", e)
+        return None
+    if resp.status_code == 429:
+        logger.warning("Semantic Scholar rate-limited (HTTP 429) on arXiv lookup")
+        return None
+    if resp.status_code == 404:
+        logger.info("Semantic Scholar has no record for arXiv:%s", arxiv_id)
+        return None
+    if resp.status_code != 200:
+        logger.warning("Semantic Scholar arXiv lookup returned HTTP %d", resp.status_code)
+        return None
+    try:
+        data = resp.json()
+    except ValueError:
+        logger.warning("Semantic Scholar arXiv lookup returned non-JSON")
+        return None
+    if not isinstance(data, dict) or not data.get("title"):
+        return None
+    return data
 
 
 def _format_entry(paper: dict, original_title: str) -> tuple[str, bool]:

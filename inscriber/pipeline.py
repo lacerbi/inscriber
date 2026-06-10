@@ -23,12 +23,15 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
+from inscriber.bibtex.chain import citable_provenance, generate_bibtex_auto
+from inscriber.bibtex.probe import ProbeResult, parse_probe_response
 from inscriber.bibtex.semantic_scholar import generate_bibtex
 from inscriber.bundle import bundle_dir_for, read_bundle, write_bundle
 from inscriber.cache import (
     OcrCache,
     VlmCache,
     file_identity,
+    make_bibtex_probe_key,
     make_ocr_key,
     make_table_key,
     make_vlm_key,
@@ -590,6 +593,68 @@ def _vlm_describe(
     return descriptions
 
 
+def _bibtex_probe(
+    cfg: RunConfig, pages: list[_Page], session: _VlmSession, original_url: str | None
+) -> ProbeResult | None:
+    """The BibTeX citability/metadata probe (DESIGN §12, auto mode).
+
+    Runs INSIDE the open VLM session (after the figure pass) because the server
+    is torn down before ``_bibtex_outputs`` runs. Cache-first like every VLM
+    pass; a failed/truncated/unparseable probe is treated as "citability
+    unknown" and is never cached. Never fails the run.
+    """
+    if cfg.bibtex.mode != "auto" or not pages:
+        return None
+    # Recognized repository provenance settles citability, and when online the
+    # by-ID/S2 sources don't need the probe's metadata either — skip the VLM
+    # call entirely. (Offline still probes: best-effort needs the metadata.)
+    if not cfg.net.offline and citable_provenance(original_url):
+        logger.info("BibTeX (auto): provenance recognized; probe skipped")
+        return None
+    if not _vlm_configured(cfg):
+        logger.warning(
+            "BibTeX probe skipped: no VLM configured (set [vlm] model/mmproj or "
+            "--vlm-endpoint)"
+        )
+        return None
+    # The first PROCESSED page: with a --pages range that excludes page 1 this
+    # is body text and the abstain-biased probe will typically answer no.
+    page = pages[0]
+    proto = session.proto  # one instance: cache-key material AND inference (§9.2)
+    prompt = proto.build_bibtex_probe_prompt(page.page_text)
+    model_id, mmproj_id, server_id = session.identities()
+    key = make_bibtex_probe_key(
+        vlm_backend_name=proto.name,
+        vlm_model_identity=model_id,
+        vlm_mmproj_identity=mmproj_id,
+        server_identity=server_id,
+        full_assembled_prompt=prompt,
+        sampling=proto.sampling(),
+        chat_template_kwargs=proto.chat_template_kwargs(),
+    )
+    cached = session.cache.get(key)
+    if cached is not None:
+        logger.info("BibTeX probe: cache hit")
+        return parse_probe_response(cached)
+    logger.info("BibTeX probe: reading front matter (page %d)…", page.page_number)
+    try:
+        # The key's prompt string is the one sent — assembled exactly once.
+        raw = session.backend().probe_metadata(prompt)
+    except ConfigError:
+        raise  # missing binary is a setup error, not a per-document failure
+    except Exception as e:  # noqa: BLE001 - resilience (DESIGN §16)
+        logger.warning("BibTeX probe failed: %s; treating citability as unknown", e)
+        return None
+    result = parse_probe_response(raw)
+    if result is None:
+        logger.warning(
+            "BibTeX probe returned unusable output; treating citability as unknown"
+        )
+        return None
+    session.cache.put(key, result.raw)  # never cache a failure
+    return result
+
+
 def _assemble(cfg: RunConfig, pages: list[_Page], descriptions: dict[str, str]) -> str:
     """Stitch + clean + inject descriptions into the full document (DESIGN §10)."""
     figures_by_id = {f.id: f for pg in pages for f in pg.figures}
@@ -624,19 +689,52 @@ def _assemble(cfg: RunConfig, pages: list[_Page], descriptions: dict[str, str]) 
 
 
 def _bibtex_outputs(
-    cfg: RunConfig, full_md: str, out_dir: Path, base: str
+    cfg: RunConfig,
+    full_md: str,
+    out_dir: Path,
+    base: str,
+    *,
+    probe: ProbeResult | None = None,
+    original_url: str | None = None,
 ) -> tuple[str | None, list[str]]:
-    """Fetch BibTeX (opt-in, online) → write ``{base}.bib``; optionally a fenced
-    block to prepend into the document (DESIGN §12). Never fails the run."""
-    if not cfg.bibtex.enabled:
+    """Produce + write ``{base}.bib`` (and optionally a fenced block to prepend
+    into the document) per ``bibtex.mode`` (DESIGN §12). Never fails the run.
+
+    ``on`` is the frozen paper2llm-parity path (title search + mock fallback,
+    network required). ``auto`` walks the citability → source chain with
+    ``probe`` and ``original_url`` (provenance), degrading gracefully.
+    """
+    if cfg.bibtex.mode == "off":
         return None, []
-    if cfg.net.offline:
-        logger.warning("--offline: skipping BibTeX (requires network)")
+    source = ""
+    try:
+        if cfg.bibtex.mode == "on":
+            if cfg.net.offline:
+                logger.warning("--offline: skipping BibTeX (requires network)")
+                return None, []
+            title = extract_title(full_md)
+            logger.info("fetching BibTeX for: %s", title)
+            bibtex = generate_bibtex(title)
+        else:  # auto: citability → source chain
+            bibtex, source = generate_bibtex_auto(
+                probe,
+                original_url=original_url,
+                online_allowed=not cfg.net.offline,
+                fallback_title=extract_title(full_md),
+            )
+            if bibtex is None:
+                if source == "not-citable":
+                    logger.info("BibTeX (auto): document judged not citable; skipping")
+                else:
+                    logger.info("BibTeX (auto): skipped: %s", source)
+                return None, []
+    except Exception as e:  # noqa: BLE001 - resilience (DESIGN §16): e.g. a
+        # malformed-but-HTTP-200 API body; BibTeX never fails the run.
+        logger.warning("BibTeX generation failed: %s; skipping", e)
         return None, []
-    title = extract_title(full_md)
-    logger.info("fetching BibTeX for: %s", title)
-    bibtex = generate_bibtex(title)
     bib_path = write_text_file(out_dir / f"{base}.bib", bibtex + "\n", clobber=cfg.output.clobber)
+    if cfg.bibtex.mode == "auto":
+        logger.info("BibTeX (auto): wrote entry via %s", source)
     block = f"```\n{bibtex}\n```\n\n---\n\n" if cfg.bibtex.append_to_document else None
     return block, [str(bib_path)]
 
@@ -768,15 +866,19 @@ def describe(cfg: RunConfig) -> list[str]:
 
     with _workdir(cfg) as work:
         descriptions: dict[str, str] = {}
+        probe: ProbeResult | None = None
         session = _VlmSession(cfg, work)
         try:
             tables_refined = _refine_tables(cfg, pages, session)
             if figures_need_vlm:
                 descriptions = _vlm_describe(cfg, pages, bundle.dir, session)
+            probe = _bibtex_probe(cfg, pages, session, bundle.original_url)
         finally:
             session.close()
         full_md = _assemble(cfg, pages, descriptions)
-        bibtex_block, bib_written = _bibtex_outputs(cfg, full_md, out_dir, base)
+        bibtex_block, bib_written = _bibtex_outputs(
+            cfg, full_md, out_dir, base, probe=probe, original_url=bundle.original_url
+        )
         written = _write_documents(
             cfg, base, full_md, out_dir,
             bibtex_block=bibtex_block, vlm_tables=tables_refined > 0,
@@ -800,15 +902,19 @@ def _run_body(cfg: RunConfig, resolved, base, out_dir, work, *, vlm_endpoint=Non
         w.raster_png = pg.png_bytes  # table restructuring input (verbatim render)
 
     descriptions: dict[str, str] = {}
+    probe: ProbeResult | None = None
     session = _VlmSession(cfg, work, endpoint_override=vlm_endpoint)
     try:
         tables_refined = _refine_tables(cfg, working, session)
         if figures_need_vlm:
             descriptions = _vlm_describe(cfg, working, work, session)
+        probe = _bibtex_probe(cfg, working, session, resolved.original_url)
     finally:
         session.close()
     full_md = _assemble(cfg, working, descriptions)
-    bibtex_block, bib_written = _bibtex_outputs(cfg, full_md, out_dir, base)
+    bibtex_block, bib_written = _bibtex_outputs(
+        cfg, full_md, out_dir, base, probe=probe, original_url=resolved.original_url
+    )
     written = _write_documents(
         cfg, base, full_md, out_dir,
         bibtex_block=bibtex_block, vlm_tables=tables_refined > 0,

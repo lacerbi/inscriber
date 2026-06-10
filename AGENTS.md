@@ -49,8 +49,10 @@ upstream; DESIGN §2.2, `dev/docs/build-9587-verification.md`).
 
 Pipeline (`inscriber/pipeline.py` orchestrates; DESIGN §3): resolve input →
 rasterize (PyMuPDF) → per-page OCR → figure crop → **VLM table restructuring →
-VLM figure description** (in that order — figure context must see clean tables) →
-stitch/clean → split (main/appendix/backmatter) → optional BibTeX → write.
+VLM figure description → BibTeX citability probe** (in that order — figure
+context must see clean tables; the text-only probe shares the open VLM
+session) → stitch/clean → split (main/appendix/backmatter) → BibTeX (default
+`auto`: provenance/probe citability → source chain; DESIGN §12) → write.
 
 - **Three subcommands**: `run` (end-to-end), `ocr` (writes a portable _bundle_:
   `manifest.json` + `figures/` crops + `pages/` rasters for table pages), and
@@ -107,10 +109,13 @@ stitch/clean → split (main/appendix/backmatter) → optional BibTeX → write.
 ## Testing conventions
 
 - Tests mock at the **chat-client boundary**: monkeypatch `ChatClient.chat_image`
-  and fake `LlamaServerManager.serve` (see `tests/test_pipeline_mocked.py`,
+  AND `ChatClient.chat` (the text-only BibTeX probe lands on `chat`), and fake
+  `LlamaServerManager.serve` (see `tests/test_pipeline_mocked.py`,
   `tests/test_tables.py`). Mock prompts are discriminated by content
   (`"<|grounding|>"` / `"Convert the document to markdown"` for OCR,
-  `"reconstructing ONE table"` for tables, else figure).
+  `"reconstructing ONE table"` for tables, `"bibliographic metadata"` for the
+  BibTeX probe, else figure). Probe fakes default to `{"citable": false}` so
+  default-`auto` runs stay inert and network-free in tests.
 - Use the `hermetic_cache` fixture pattern (monkeypatch `cache.default_cache_dir`
   / `default_vlm_cache_dir` into tmp) — never let tests touch the real
   platformdirs cache.

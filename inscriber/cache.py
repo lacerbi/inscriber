@@ -250,14 +250,49 @@ def make_table_key(
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def make_bibtex_probe_key(
+    *,
+    vlm_backend_name: str,
+    vlm_model_identity: str,
+    vlm_mmproj_identity: str,
+    server_identity: str,
+    full_assembled_prompt: str,
+    sampling: dict,
+    chat_template_kwargs: dict | None = None,
+) -> str:
+    """Cache key for the BibTeX citability/metadata probe (DESIGN §12, auto mode).
+
+    The page-1 text is embedded in the assembled prompt, so there is no separate
+    content hash; the ``kind`` discriminator keeps probe entries disjoint from
+    figure descriptions and restructured tables in the shared store. Note the
+    prompt embeds the *post-table-refine* page text, coupling the key to the
+    table pass's settings — intended: the key is the exact model input.
+    """
+    payload = json.dumps(
+        {
+            "kind": "bibtex-probe",
+            "backend": vlm_backend_name,
+            "model": vlm_model_identity,
+            "mmproj": vlm_mmproj_identity,
+            "server": server_identity,
+            "prompt": full_assembled_prompt,
+            "sampling": sampling,
+            "chat_template_kwargs": chat_template_kwargs,
+        },
+        sort_keys=True,
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 class VlmCache:
     """Per-item cache of VLM text outputs (DESIGN §9.6).
 
-    Stores figure descriptions (:func:`make_vlm_key`) and restructured tables
-    (:func:`make_table_key`) — the key payloads are disjoint by construction.
-    Lets a document be re-run (re-split, re-fetch BibTeX) without re-describing
-    figures or re-restructuring tables. Same ``enabled``/``refresh`` semantics
-    as :class:`OcrCache`.
+    Stores figure descriptions (:func:`make_vlm_key`), restructured tables
+    (:func:`make_table_key`), and BibTeX probe answers
+    (:func:`make_bibtex_probe_key`) — the key payloads are disjoint by
+    construction. Lets a document be re-run (re-split, re-fetch BibTeX) without
+    re-describing figures or re-restructuring tables. Same
+    ``enabled``/``refresh`` semantics as :class:`OcrCache`.
     """
 
     def __init__(

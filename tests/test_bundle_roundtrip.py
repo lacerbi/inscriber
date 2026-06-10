@@ -122,7 +122,7 @@ def test_describe_with_bibtex_injection(tmp_path, monkeypatch, hermetic_cache, f
     )
     dcfg = RunConfig(command="describe", input=str(bundle_dir))
     dcfg.output.dir = str(out)
-    dcfg.bibtex.enabled = True
+    dcfg.bibtex.mode = "on"
     dcfg.bibtex.append_to_document = True
     written = pipeline.describe(dcfg)
 

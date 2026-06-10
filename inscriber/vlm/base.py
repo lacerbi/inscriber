@@ -36,6 +36,11 @@ class VlmBackend(ABC):
         key material."""
         raise NotImplementedError
 
+    def build_bibtex_probe_prompt(self, page_text: str) -> str:
+        """The fully-assembled BibTeX citability/metadata probe prompt — also
+        the probe cache key material (DESIGN §12, auto mode)."""
+        raise NotImplementedError
+
     @abstractmethod
     def describe(self, image_png: bytes, prompt: str) -> str:
         """One figure description (crop + a :meth:`build_prompt` prompt).
@@ -48,6 +53,15 @@ class VlmBackend(ABC):
         Returns the raw model response, or ``None`` when the response was
         truncated — a truncated table silently loses rows, while the original
         OCR blob still has every value, so the caller keeps the blob.
+        """
+        raise NotImplementedError
+
+    def probe_metadata(self, prompt: str) -> str | None:
+        """One BibTeX metadata probe (a :meth:`build_bibtex_probe_prompt`
+        prompt). **Text-only** — the project's only image-less inference call.
+
+        Returns the raw model response, or ``None`` when truncated (the caller
+        treats it as "citability unknown" and must not cache it).
         """
         raise NotImplementedError
 

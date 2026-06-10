@@ -284,6 +284,19 @@ def _mock_inference(monkeypatch, *, table_response=PIPE_TABLE, table_finish="sto
         return "<img_desc>A line chart trending upward.</img_desc>"  # figure call
 
     monkeypatch.setattr(ChatClient, "chat_image", fake_chat_image)
+
+    def fake_chat(self, messages, *, max_tokens=None, sampling=None,
+                  timeout_s=None, chat_template_kwargs=None):
+        # Text-only surface: only the BibTeX probe lands here; non-citable by
+        # default so auto-mode runs stay inert/network-free in these tests.
+        self.last_finish_reason = "stop"
+        self.last_completion_tokens = 10
+        text = " ".join(str(m.get("content", "")) for m in messages)
+        if "bibliographic metadata" in text:
+            return '{"citable": false}'
+        raise AssertionError(f"unexpected text-only chat call: {text[:80]!r}")
+
+    monkeypatch.setattr(ChatClient, "chat", fake_chat)
     return table_calls
 
 

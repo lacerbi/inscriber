@@ -12,7 +12,15 @@
 > `paper2llm`). It is written to be read entirely standalone — every concept,
 > dependency, and external quirk needed to build v1 is described here.
 >
-> **Last updated:** 2026-06-10 (§2.2/§8.2/§8.3: **re-pinned on llama.cpp build
+> **Last updated:** 2026-06-10 (§12: **BibTeX is now mode-driven, default
+> `auto`** — citability via repository provenance or a cached local VLM probe,
+> then a source chain: S2-by-arXiv-ID (prefers the published version) → arXiv
+> export API → S2 title search → local best-effort; `--bibtex-mode` with
+> `--bibtex` as the `on` alias and a legacy `enabled` mapping; the
+> network-privacy statements throughout reworded — online lookups send the
+> extracted title/ID only, the document never leaves the machine. Probe
+> validated + frozen in `dev/docs/bibtex-probe-findings.md`. Also same day:
+> §2.2/§8.2/§8.3: **re-pinned on llama.cpp build
 > ≥ 9587** — the grounding frame changed upstream to per-axis; `grid_to_norm`
 > now maps per-axis only and `DeepSeekOcrBackend.min_server_build = 9587` makes
 > the pipeline refuse older servers (verification + live calibration evidence
@@ -57,8 +65,9 @@ For a given PDF, the output is:
    figure replaced by a generated **textual description** of that figure.
 2. **Split files** (unless disabled): the document divided into `main`,
    `appendix`, and `backmatter` parts (see §11).
-3. Optionally, a **BibTeX entry** for the paper (this single feature requires
-   network access; see §12).
+3. A **BibTeX entry** for the paper when it is judged citable (default `auto`
+   mode, §12). The online lookups send only the extracted title / arXiv ID —
+   never the document — and are disabled by `--offline`.
 
 ### 1.2 Goals
 
@@ -313,7 +322,7 @@ abstraction (§8) is built so adding them later is purely additive.
 │        └─ both via VlmBackend (GemmaVlmBackend) over ONE managed llama-server│
 │  7. Assemble + clean   (stitch pages, strip headers, inject descriptions)[§10]│
 │  8. Split              (main / appendix / backmatter)        [§11]           │
-│  9. BibTeX (optional, online)                               [§12]           │
+│  9. BibTeX (mode-driven; auto: citability → source chain)  [§12]           │
 │ 10. Write outputs                                           [§14]           │
 └───────────────────────────────────────────────────────────────────────────┘
         │                               │
@@ -409,8 +418,12 @@ inscriber/
 │   │   ├── stitch.py           # multi-page join, header/footer & hyphen cleanup
 │   │   ├── splitter.py         # main/appendix/backmatter (ported heuristics)
 │   │   └── prompt.py           # figure-description prompt template + extractor
-│   ├── bibtex/
-│   │   └── semantic_scholar.py # optional online BibTeX (title→entry)
+│   ├── bibtex/                 # BibTeX modes (§12): auto chain / on / off
+│   │   ├── semantic_scholar.py # S2 title search + by-arXiv-ID lookup
+│   │   ├── probe.py            # citability/metadata probe (pinned prompt)
+│   │   ├── arxiv.py            # arXiv ID from URL; export-API @misc fallback
+│   │   ├── local.py            # best-effort @misc from probe metadata
+│   │   └── chain.py            # auto orchestration (citability → sources)
 │   ├── bundle.py               # OCR bundle read/write (two-step, §8.5)
 │   ├── cache.py                # OcrCache: content-addressed per-page store
 │   ├── output.py               # writes full + splits + bibtex + figures/
@@ -550,10 +563,13 @@ Input is one positional argument: a **local PDF path** or an **http(s) URL**.
 - Output of this stage: a `ResolvedInput(pdf_bytes, source, original_url,
 suggested_name)`.
 
-> **Privacy note:** URL input and BibTeX (§12) are the _only_ features that
-> touch the network. The OCR + VLM core is fully offline. The README must state
-> this clearly. A `--offline` flag hard-disables all network use (URL input then
-> errors early).
+> **Privacy note:** the local guarantee is about **documents and models** —
+> documents and figures are never sent to any cloud model. The only network
+> egress is URL input (downloading the PDF) and the online BibTeX sources
+> (§12), which send **only the extracted title / arXiv ID**, never the
+> document. The README must state this clearly. A `--offline` flag
+> hard-disables all network use (URL input then errors early; BibTeX `auto`
+> degrades to its fully-local probe + best-effort entry).
 
 ---
 
@@ -850,7 +866,10 @@ Notes:
   release). The §17 round-trip test asserts on `bundle_schema`.
 - **What config `describe` honors** (it has no PDF and no OCR model):
   - **Applies:** `[vlm].*`, `[table].*` (§9.7), `[figure].mode`,
-    `[figure].context_chars`, `[output].*`, `[bibtex].*`, `[net].offline`, and
+    `[figure].context_chars`, `[output].*`, `[bibtex].*` (in `auto` mode the
+    citability probe runs on the VLM at describe time, and provenance is read
+    from the manifest's `source.original_url` via `Bundle.original_url` —
+    §12), `[net].offline`, and
     `[llama].*` + `[inference]` (it still launches a VLM server).
   - **Ignores (baked into the bundle at `ocr` time):** all `[ocr].*`,
     `[figure].detect`, `[figure].crop_padding`.
@@ -1293,11 +1312,99 @@ append-BibTeX-to-document option (§12).
 
 ---
 
-## 12. BibTeX (optional, **online**) (`bibtex/semantic_scholar.py`)
+## 12. BibTeX (`bibtex/`)
 
-Ported from `paper2llm`. **This is the one core-adjacent feature that requires
-network access** and is therefore **opt-in** (`--bibtex` / config
-`bibtex.enabled = true`).
+BibTeX generation is governed by **`bibtex.mode`** (CLI `--bibtex-mode`,
+default **`auto`**); a legacy `[bibtex] enabled = true/false` config key is
+read as `on`/`off` with a deprecation warning (`mode` wins if both are
+present):
+
+- **`off`** — no BibTeX.
+- **`on`** — the original opt-in behavior, ported from `paper2llm` and
+  **frozen for parity** (`--bibtex` remains an alias): always look the
+  extracted title up via Semantic Scholar title search, mock fallback on
+  failure (§12.2). Requires network — under `--offline` it skips with a
+  warning. No LLM involved; works with no VLM configured.
+- **`auto`** — (default; the probe was validated on real hardware and frozen,
+  `dev/docs/bibtex-probe-findings.md`) decide whether the document is
+  *citable*, then produce an entry through an ordered source chain (§12.1).
+  Never fails the run: every failure degrades to the next source or to a
+  logged skip (§16).
+
+### 12.1 `auto`: citability → source chain (`probe.py`, `arxiv.py`, `local.py`, `chain.py`)
+
+**Citability** is settled in this order:
+
+1. **Provenance** — a source URL matching **any of the seven** recognized
+   paper repositories (§6's domain-handler configs;
+   `chain.citable_provenance`) is citable by construction. The probe never
+   vetoes provenance: an explicit `"citable": false` against a repository URL
+   is logged as a disagreement, nothing more. `describe` reads provenance
+   from the bundle manifest's `source.original_url` (`Bundle.original_url`,
+   §8.5).
+2. **The probe** (provenance-less documents) — one cached **text-only** VLM
+   call (`probe.py`; the project's only image-less inference) over the first
+   processed page's text (post-table-refine, truncated to ~3000 chars — its
+   own constant, not the `[figure].context_chars` knob): is this a
+   self-contained scholarly work, and which front-matter fields
+   (title/authors/year/venue) are visible? The prompt is **pinned
+   model-facing behavior** (the §9.7 table-pass discipline): assembled
+   exactly once per document via `build_bibtex_probe_prompt`, used verbatim
+   as cache-key material AND as the request; the phrase "bibliographic
+   metadata" is the pinned test-mock discriminator. It is **abstain-biased**
+   ("when unsure, answer false" — with a default-on feature a false positive
+   is worse than a false negative) and **transcription-not-recall** (only
+   fields visible in the text; absent fields omitted — never
+   `Unknown Journal` filler). Parsing tolerates a wrapping code fence
+   (observed on real hardware) but is otherwise strict JSON; a
+   failed/truncated/unparseable probe means "citability unknown" and is
+   **never cached**. No VLM configured → skipped with a warning. A `--pages`
+   range that excludes page 1 feeds the probe body text — it will typically
+   abstain.
+
+   Mechanics mirror §9.7: the probe runs **inside the open `_VlmSession`**
+   (after the figure pass — the server is torn down before the BibTeX step),
+   cache-first in the shared VLM store (`make_bibtex_probe_key`,
+   `"kind": "bibtex-probe"`; the key embeds the post-refine page text, so
+   table-pass settings are deliberately key material), and **when online
+   provenance already settles citability the probe is skipped entirely** (no
+   VLM call — the by-ID/title sources don't need it; offline still probes,
+   because best-effort needs the metadata).
+3. No provenance and no positive probe → **abstain** (a visible INFO line,
+   never a silent skip — and never an unwanted `.bib`).
+
+**The source chain** (network intent = the existing `net.offline` knob —
+`--offline` skips steps 1–3). *Preprint provenance ≠ preprint citation*: many
+preprints are later published at a venue, so the by-ID step asks Semantic
+Scholar first:
+
+1. **Semantic Scholar by arXiv ID** (`lookup_arxiv`; the `vN` suffix is
+   stripped — S2 indexes the base ID). Exact identifier match — no title
+   validation. A record with a real publication venue → the **published**
+   `@article` entry (the same shape as the title-search path); no venue (or
+   an "arXiv.org"-style one) → the `@misc` + `eprint` preprint shape.
+2. **arXiv export API** (`arxiv_bibtex`; Atom parsed with stdlib
+   `xml.etree`) — the availability fallback when S2 is down/429/recordless:
+   the standard `@misc` + `eprint` + `primaryClass` shape. (The export API
+   can never know about venue publication, hence second.)
+3. **Semantic Scholar title search** — query = the probe's title, else the
+   extracted `# Title` (§11); title validation compares against **the same
+   string used as the query** (avoids a spurious `% WARNING` from a mangled
+   OCR heading). No mock fallback here (that is `on`-mode parity) — failure
+   falls through.
+4. **Local best-effort** (`local.py`) — fully offline: a clearly-marked
+   `@misc` assembled from the probe's transcribed metadata (canonical header
+   pinned by `tests/fixtures/bibtex_best_effort.txt`). Requires a title; the
+   extracted venue goes in `note`, never `journal`. Entry types stay humble
+   (`@misc` / the existing `@article`); type inference is future work
+   (§22.2).
+5. Nothing usable → logged skip.
+
+Every outcome is one INFO line: `BibTeX (auto): <wrote entry via
+{s2-arxiv-id | arxiv-export | s2-title | best-effort} | document judged not
+citable; skipping | skipped: <reason>>`.
+
+### 12.2 The `on` path and shared mechanics (paper2llm parity, frozen)
 
 - Extract the paper **title** from the document (`# Title`, §11).
 - Query the **Semantic Scholar** API and take the **first result** (`results[0]`)
@@ -1356,7 +1463,8 @@ fallback mock citation.` — is assembled in **`content-utils.ts`**
     {document content}
     ````
 
-    Only for `section ∈ {full, main, allparts}`.
+    Only for `section ∈ {full, main, allparts}`. The **Placement** rules apply
+    to whatever entry any mode produced (`auto` included).
 
 - Respects `--offline` (skips with a clear message) and network failure (warns,
   continues — never fails the whole run for BibTeX).
@@ -1452,11 +1560,15 @@ path = ""                              # "" = OS temp dir; else explicit dir
 keep_intermediates = false             # keep page/crop images on success
 
 [bibtex]
-enabled = false                        # online; opt-in
+mode = "auto"                          # auto (default: citability → source
+                                       #   chain, §12) | on (--bibtex alias;
+                                       #   frozen paper2llm path) | off.
+                                       #   Legacy `enabled` maps with a warning.
 append_to_document = false             # also inject (prepend, fenced) into doc
 
 [net]
-offline = false                        # hard-disable all network use
+offline = false                        # hard-disable all network use (the local
+                                       #   BibTeX probe/best-effort still run)
 ```
 
 ### 13.2 CLI surface (`cli.py`, argparse subparsers)
@@ -1514,9 +1626,10 @@ inscriber describe BUNDLE [vlm-options]# OCR bundle → VLM + assemble + write
       --no-normalize-breaks     skip blank-line collapsing
       --no-clobber              error instead of overwriting existing outputs
       --no-notice               omit the OCR/VLM caveat footer
-      --bibtex                  fetch BibTeX (requires network)
+      --bibtex                  fetch BibTeX (alias for --bibtex-mode on; requires network)
+      --bibtex-mode MODE        off | on | auto (default auto: citability → source chain, §12)
       --bibtex-in-doc           also inject the BibTeX entry into the document
-      --offline                 disable ALL network use (URL input + bibtex)
+      --offline                 disable ALL network use (URL input + online BibTeX sources)
 
   # caching / debugging
       --no-cache                neither read nor write caches
@@ -1560,7 +1673,7 @@ inscriber describe BUNDLE [vlm-options]# OCR bundle → VLM + assemble + write
 | `output.notice`                                        | `--no-notice` (sets false)                                                        |
 | `cache.enabled` / `cache.refresh`                      | `--no-cache` / `--refresh`                                                        |
 | `workdir.path` / `workdir.keep_intermediates`          | `--workdir` / `--keep-intermediates`                                              |
-| `bibtex.enabled` / `bibtex.append_to_document`         | `--bibtex` / `--bibtex-in-doc`                                                    |
+| `bibtex.mode` / `bibtex.append_to_document`            | `--bibtex-mode` (`--bibtex` ⇒ `on`) / `--bibtex-in-doc`                           |
 | `net.offline`                                          | `--offline`                                                                       |
 | (page range — inscriber-only, §7)                      | `--pages`                                                                         |
 
@@ -1581,7 +1694,7 @@ OUT/
 ├── paper.main.md             # if split = true and split succeeded
 ├── paper.appendix.md         # if an appendix section was detected
 ├── paper.backmatter.md       # if a backmatter section was detected
-├── paper.bib                 # if --bibtex and an entry was found
+├── paper.bib                 # when BibTeX produced an entry (default auto, §12)
 └── figures/                  # if figure-mode keeps images
     ├── fig_p1_1.png
     └── ...
@@ -1628,7 +1741,9 @@ These are hard requirements, not nice-to-haves:
   it finds `llama-server.exe` without manual suffixing.
 - **`--offline` does not gate the local servers.** The OCR/VLM `llama-server`
   processes are loopback (`127.0.0.1`), not "network" in the privacy sense —
-  `--offline` only disables URL input and BibTeX. Do **not** wrongly block server
+  `--offline` only disables URL input and the online BibTeX sources; the
+  BibTeX `auto` probe and best-effort entry are loopback-local and stay
+  available under `--offline` (§12). Do **not** wrongly block server
   spawn behind `--offline`.
 - **GPU backend** (Metal on macOS, CUDA/Vulkan/etc. on Win/Linux) is whatever
   the user's llama.cpp build supports. `inscriber` stays agnostic and only
@@ -1648,7 +1763,8 @@ These are hard requirements, not nice-to-haves:
   enough; a progress bar (e.g. `rich`/`tqdm`) is a nice-to-have.
 - **Resilience:** a single figure that fails to describe should not kill the run
   — log it, insert a `[figure description unavailable]` placeholder, continue.
-  Same for BibTeX network failure, and for an OCR page that loops/truncates
+  Same for BibTeX failures — in `auto` mode the source chain degrades source by
+  source down to a logged skip (§12) — and for an OCR page that loops/truncates
   (§2.2): best-effort parse what came back, log, move on.
 - **stdout vs stderr:** progress/logs go to **stderr**; on completion print the
   **list of written file paths to stdout** (one per line) so the run is
@@ -1686,7 +1802,13 @@ the inference layer at the **chat-client boundary**.
   docs (with/without appendix, backmatter, the `A ` edge case, page markers).
 - **`test_stitch.py`** — header/footer stripping & de-hyphenation on crafted
   multi-page inputs.
-- **`test_config.py`** — TOML load, CLI-override precedence, validation errors.
+- **`test_config.py`** — TOML load, CLI-override precedence, validation errors
+  (incl. the `bibtex.mode` tri-state + legacy `enabled` alias).
+- **`test_bibtex.py` / `test_bibtex_probe.py` / `test_bibtex_chain.py`** — the
+  §12 surface: citation key / title validation / mock fallback (`on`-mode
+  parity), the probe (prompt assembly, fence-tolerant parsing, truncation,
+  never-cache-failure, key disjointness), and the auto chain (every
+  fall-through, provenance behavior, `--offline`, httpx mocked).
 - **`test_pipeline_mocked.py`** — end-to-end on a tiny fixture PDF with the OCR
   and VLM clients **mocked** to return canned responses; asserts the full set of
   output files and figure injection.
@@ -1719,7 +1841,7 @@ mocked servers.
 | ------------------- | -------------------------------------------------------- |
 | `pymupdf`           | PDF page count + rasterization (no system poppler)       |
 | `pillow`            | Crop figure regions from page images                     |
-| `httpx`             | llama-server chat client; URL download; Semantic Scholar |
+| `httpx`             | llama-server chat client; URL download; S2/arXiv APIs    |
 | `platformdirs`      | Cross-platform config/cache/data dirs                    |
 | `tomli` (py<3.11)   | TOML parsing (`tomllib` is stdlib from 3.11)             |
 | `rich` _(optional)_ | Progress output / nicer logs                             |
@@ -1746,11 +1868,13 @@ llama.cpp over HTTP.
 
 ## 20. Security & privacy
 
-- **Local by default.** The only network egress is (a) downloading a PDF when
-  the input is a URL and (b) the opt-in Semantic Scholar BibTeX lookup. Both are
-  disabled by `--offline`. Documents and figures are **never** sent to any
-  third-party model API — they go only to the user's own llama.cpp server on
-  `127.0.0.1`.
+- **Documents and models are local.** Documents and figures are **never** sent
+  to any third-party model API — they go only to the user's own llama.cpp
+  server on `127.0.0.1`. The only network egress is (a) downloading a PDF when
+  the input is a URL and (b) the default-`auto` BibTeX lookups (§12), which
+  send **only the extracted title / arXiv ID** to citation APIs (Semantic
+  Scholar, arXiv) — never the document. Both are disabled by `--offline`
+  (BibTeX then degrades to its fully-local probe + best-effort entry).
 - The server binds to **loopback** on an ephemeral port; it is not exposed.
 - No telemetry. No persisted secrets (there are no API keys in the core flow).
 
@@ -1851,6 +1975,12 @@ is wired.
   frame **under real tiling** must be confirmed with the M1a calibration
   discipline, and it needs a new `deepseek-ocr-2` backend (different server
   template/flags). Research record: `dev/docs/upstream-watch.md`.
+- **BibTeX refinements** (§12 shipped the `auto` chain; deferred from
+  `dev/plans/PLAN-bibtex-auto.md`): a `--bibtex-source` CLI axis; **Crossref** as an
+  additional source; S2 **by-DOI** lookup for bioRxiv/medRxiv provenance
+  (their URLs embed the `10.1101` DOI); structure-based citability heuristics
+  beyond provenance; entry-type inference (`@inproceedings` etc.); `eprint`
+  fields on published entries; extraction from the paper's own reference list.
 - **Table reconstruction across page breaks** (§10.3) — currently a documented
   limitation.
 - **Batch mode** — process a directory of PDFs reusing a single warm server.
@@ -1896,9 +2026,9 @@ implementation. Paths are relative to `paper2llm-web/src/`.
 | 11b | `ensureImageDescriptionSpacing` (blank lines around `> **Image.**` blocks & `Figure …` captions)                                                | ✅                     | §10.3(a)      | `core/markdown-processor.ts` → `ensureImageDescriptionSpacing`                                                                               |
 | 12  | Split into **main / appendix / backmatter** (heading heuristics)                                                                                | ✅                     | §11           | `core/utils/markdown-splitter.ts`                                                                                                            |
 | 13  | **Combined "allparts"** with `# {title} - Appendix/Backmatter` headers                                                                          | ✅                     | §11           | `web/components/markdown-preview/utils/content-utils.ts` → `getSectionContent`                                                               |
-| 14  | **BibTeX** generation (Semantic Scholar)                                                                                                        | ✅ (online, opt-in)    | §12           | `core/utils/bibtex-generator.ts`                                                                                                             |
-| 15  | BibTeX **title validation** + `% WARNING` mismatch comment                                                                                      | ✅                     | §12           | `bibtex-generator.ts`, `content-utils.ts`, `BibTeXTitleValidation` in `types/interfaces.ts`                                                  |
-| 15b | BibTeX **mock fallback** entry (mock text in `content-utils`) + empty-string failure sentinel (`bibtex-generator`)                              | ✅                     | §12           | `content-utils.ts` (mock text), `bibtex-generator.ts:515` (`""` sentinel)                                                                    |
+| 14  | **BibTeX** generation (Semantic Scholar)                                                                                                        | ✅ (`on` mode, frozen — the default is the new `auto`, §12) | §12           | `core/utils/bibtex-generator.ts`                                                                                                             |
+| 15  | BibTeX **title validation** + `% WARNING` mismatch comment                                                                                      | ✅ (`on` mode + the auto title-search step) | §12           | `bibtex-generator.ts`, `content-utils.ts`, `BibTeXTitleValidation` in `types/interfaces.ts`                                                  |
+| 15b | BibTeX **mock fallback** entry (mock text in `content-utils`) + empty-string failure sentinel (`bibtex-generator`)                              | ✅ (`on` mode only)    | §12           | `content-utils.ts` (mock text), `bibtex-generator.ts:515` (`""` sentinel)                                                                    |
 | 16  | **Inject BibTeX into document** — _prepended_, fenced code block, `---` separator                                                               | ✅                     | §12           | `content-utils.ts:195` → `getContentWithOptionalBibtex`                                                                                      |
 | 17  | BibTeX retry on demand                                                                                                                          | ⤳ Reclassified         | §12           | UI affordance (`useCopyDownload.ts` `retryBibtexGeneration`); no CLI analog — re-run with `--bibtex`                                         |
 | 18  | Output **filename** derived from source (PDF name / URL handler)                                                                                | ✅                     | §14           | `useCopyDownload.ts`, domain handlers                                                                                                        |
@@ -2007,7 +2137,8 @@ is a protected artifact line for the header/footer stripper (§10.3b).
 
 **7. Assemble / split / write (§10–§14).** Pages concatenated → cleanup → split →
 `paper.md` (full), `paper.main.md` / `paper.appendix.md` / `paper.backmatter.md`
-as detected, `figures/fig_p3_1.png`, and `paper.bib` if `--bibtex`.
+as detected, `figures/fig_p3_1.png`, and `paper.bib` when BibTeX produced an
+entry (default `auto`, §12).
 
 ---
 

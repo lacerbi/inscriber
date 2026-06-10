@@ -1,7 +1,9 @@
 # Plan: BibTeX `auto` mode (classify → source chain → best-effort)
 
 Created: 2026-06-10
-Status: 📋 DESIGNED — awaiting go-ahead; no code written.
+Status: ✅ IMPLEMENTED — all phases B0–B4 landed 2026-06-10 (see Execution
+checklist below); probe validated on real hardware
+(`dev/docs/bibtex-probe-findings.md`), default flipped to `auto`.
 Revised: 2026-06-10 — pre-implementation review pass (codebase claims verified
 against source; amendments folded in: provenance-first chain with probe skip
 (decision 7), published-version-first by-ID lookup (decision 8), text-only
@@ -178,6 +180,44 @@ The probe is **text-only**: `ChatClient.chat()` already exists
 
 ---
 
+## Execution checklist (implementation tracker, 2026-06-10)
+
+All phases land as ONE change, so the per-phase DESIGN/README edits are folded
+into the final B4 docs ripple (the same-change docs rule is satisfied by the
+combined landing). Legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked.
+
+- [x] **B0** — `bibtex.mode` tri-state: models/config/cli/pipeline gate + tests
+      (suite green; legacy alias + precedence covered)
+- [x] **B1** — probe: `bibtex/probe.py`, backend methods, cache key, pipeline
+      wiring, `ChatClient.chat` mock surface, `test_bibtex_probe.py` (suite
+      green; AGENTS.md mock list updated)
+- [x] **B2** — best-effort entry: `bibtex/local.py` + canonical fixture + tests
+- [x] **B3** — chain + by-ID sources: `arxiv.py`, `lookup_arxiv`, `chain.py`,
+      provenance skip, `Bundle.original_url`, `_bibtex_outputs` growth,
+      `test_bibtex_chain.py` (suite green, 282 tests)
+- [x] **B4a** — `dev/scripts/bibtex_probe_check.py` + real-hardware validation
+      → `dev/docs/bibtex-probe-findings.md`; prompt frozen (4/4 PASS on build
+      9587 + Gemma E4B QAT, zero tuning; fence tolerance proved necessary)
+- [x] **B4b** — default flip to `auto` + deliberate test updates (suite green,
+      284 tests; default-auto e2e tests added)
+- [x] **B4c** — docs ripple: DESIGN (header, §1.1, §3 diagram, §4 tree, §6
+      privacy note, §8.5, §12 full rewrite, §13.1–13.3, §14, §15, §16, §17,
+      §18.1, §20, §22.2, §24 rows 14–15b, §25), README ("What it does",
+      outputs, options table, privacy), config.example.toml ([bibtex]+[net]),
+      AGENTS.md (pipeline line + mock list), TODO.md (auto item closed;
+      alternate-sources arXiv half ✓), dev/docs/integration-test.md (steps
+      6–7 + auto checks)
+- [x] Full suite green (286 tests) + `ruff check` clean; live CLI smoke
+      confirms the legacy-config deprecation alias on the maintainer's
+      machine-local config.toml
+- [x] /doublecheck verification pass — two Opus reviewers (code + docs): plan
+      conformance (decisions 1–8) and the full docs ripple verified; the one
+      should-fix (an unwrapped chain call could violate "BibTeX never fails
+      the run" on a malformed HTTP-200 body) fixed with a §16 guard + two new
+      tests (auto + `--bibtex-in-doc` injection; never-fails guard)
+
+---
+
 ## Phases
 
 ### Phase B0 — `bibtex.mode` tri-state (no behavior change)
@@ -209,13 +249,13 @@ semantics byte-identical to today.
   lands in B4).
 
 **Verification**:
-- [ ] `test_config.py`: tri-state precedence (CLI > config > default), legacy
+- [x] `test_config.py`: tri-state precedence (CLI > config > default), legacy
       `enabled` alias + deprecation warning, invalid value → `ConfigError`.
-- [ ] `test_cli.py`: `--bibtex-mode` wiring and its precedence over the
+- [x] `test_cli.py`: `--bibtex-mode` wiring and its precedence over the
       `--bibtex` alias.
-- [ ] `test_bibtex.py` / `test_pipeline_mocked.py`: existing `--bibtex` runs
+- [x] `test_bibtex.py` / `test_pipeline_mocked.py`: existing `--bibtex` runs
       produce byte-identical outputs (mock fixture untouched).
-- [ ] `ruff check` clean; full suite green.
+- [x] `ruff check` clean; full suite green.
 
 **Exit gate**: the §13.3 "every field overridable" contract holds for
 `bibtex.mode`; no output of any existing invocation changed.
@@ -282,14 +322,14 @@ discipline. Not yet consumed by any output path.
   this phase** (the discriminator ships here, not in B4).
 
 **Verification**:
-- [ ] `test_bibtex_probe.py` (new): prompt assembly (discriminator phrase
+- [x] `test_bibtex_probe.py` (new): prompt assembly (discriminator phrase
       present, truncation cap), JSON parse round-trip, fence tolerance,
       malformed/truncated → `None` and **not cached**, cache hit skips the
       server (hermetic cache), key disjointness vs figure/table keys.
-- [ ] `test_pipeline_mocked.py`: mocked probe response dispatched on
+- [x] `test_pipeline_mocked.py`: mocked probe response dispatched on
       "bibliographic metadata" via the new `ChatClient.chat` fake; probe runs
       inside the session (no second server launch).
-- [ ] Existing mocked suites stay green with the added `chat` fake (nothing
+- [x] Existing mocked suites stay green with the added `chat` fake (nothing
       reaches it outside `auto` mode).
 
 **Exit gate**: probe result is deterministic, cached, and inert (nothing
@@ -321,7 +361,7 @@ Pure function, fully offline.
   `on`-mode failure path (decision 6).
 
 **Verification**:
-- [ ] `test_bibtex.py` additions: full-metadata entry matches the canonical
+- [x] `test_bibtex.py` additions: full-metadata entry matches the canonical
       fixture; partial metadata omits fields; no-title → `None`; sanitization
       applied (special chars, curly quotes).
 
@@ -406,7 +446,7 @@ provenance; partially delivers TODO's "alternate BibTeX sources").
     `mode == "on"` path untouched.
 
 **Verification**:
-- [ ] `test_bibtex_chain.py` (new, httpx mocked): chain order and every
+- [x] `test_bibtex_chain.py` (new, httpx mocked): chain order and every
       fall-through (S2-by-ID with venue → published entry / S2-by-ID without
       venue → `@misc` + `eprint` / S2-by-ID 429 or no record → arXiv export
       fallback / no arXiv ID → S2 title search / S2 empty → best-effort /
@@ -419,8 +459,9 @@ provenance; partially delivers TODO's "alternate BibTeX sources").
       online → S2 with `fallback_title`; no provenance + probe-says-no →
       skip; describe-mode provenance read from the bundle's `original_url`
       (new accessor).
-- [ ] `test_pipeline_mocked.py`: `run` and `ocr`→`describe` in `auto` produce
-      the same `.bib` (probe cache keys shared via verbatim bundle text).
+- [x] `run` and `ocr`→`describe` in `auto` produce the same `.bib` (probe
+      cache keys shared via verbatim bundle text) — landed in
+      `test_bibtex_chain.py`.
 
 **Exit gate**: with `mode = "auto"` set explicitly, the whole feature works
 end-to-end (mocked); default is still `off`.
@@ -480,11 +521,12 @@ default to `auto`, and land the full documentation ripple as one change.
   wording).
 
 **Verification**:
-- [ ] Findings recorded in `dev/docs/bibtex-probe-findings.md`; prompt frozen.
-- [ ] Default-`auto` e2e (mocked): citable doc → `.bib` written via the
+- [x] Findings recorded in `dev/docs/bibtex-probe-findings.md`; prompt frozen
+      (4/4 PASS on build 9587 + Gemma E4B QAT, zero tuning needed).
+- [x] Default-`auto` e2e (mocked): citable doc → `.bib` written via the
       chain; non-citable probe → skip with the INFO line; `--offline` →
       best-effort only, no httpx call.
-- [ ] Full suite green on the flipped default (existing tests that assumed
+- [x] Full suite green on the flipped default (existing tests that assumed
       "no `.bib` unless `--bibtex`" updated deliberately, not incidentally).
 
 **Exit gate**: README/DESIGN describe the actual default behavior (documents
@@ -525,4 +567,7 @@ prompt wording, and whether Gemma thinking should be enabled for the probe
 probe entries).
 
 ---
-**Plan is ready. Awaiting explicit go-ahead — execution starts at B0.**
+**Plan executed in full (2026-06-10).** All phases B0–B4 landed as one change:
+suite green (284 tests), `ruff check` clean, the probe validated on real
+hardware (4/4, `dev/docs/bibtex-probe-findings.md`) and frozen, the default
+flipped to `auto`, and the full docs ripple applied.

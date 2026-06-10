@@ -215,7 +215,11 @@ class WorkdirConfig:
 
 @dataclass
 class BibtexConfig:
-    enabled: bool = False  # online; opt-in
+    # "auto" (default: classify citability, then walk the source chain — DESIGN
+    # §12; online lookups are title/ID-only and --offline-gated) | "on" (always
+    # look up via Semantic Scholar title search — the frozen paper2llm-parity
+    # path; --bibtex is an alias) | "off".
+    mode: str = "auto"
     append_to_document: bool = False
 
 

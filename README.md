@@ -24,8 +24,12 @@ Given a PDF (local file, or a URL from a supported paper repository),
   table is kept. Disable with `--no-table-refine`.
 - **Split files** — the document divided into `main`, `appendix`, and
   `backmatter` parts (disable with `--no-split`).
-- Optionally, a **BibTeX entry** for the paper (`--bibtex`; uses Semantic
-  Scholar, the one feature besides URL input that touches the network).
+- A **BibTeX entry** for the paper, when the document is judged citable
+  (default `auto` mode; for arXiv inputs it prefers the *published* version of
+  the preprint when one exists). Online lookups send only the extracted title
+  or arXiv ID — never the document — and under `--offline` it degrades to a
+  clearly-marked, fully-local best-effort entry. `--bibtex-mode off` disables
+  it; `--bibtex` forces the classic always-look-up mode.
 
 Results are **cached** (content-addressed, per page / figure / table), so
 re-running with different output options takes seconds. Cache keys cover the
@@ -117,7 +121,7 @@ paper.md                # full document
 paper.main.md           # split parts (as detected)
 paper.appendix.md
 paper.backmatter.md
-paper.bib               # with --bibtex
+paper.bib               # when judged citable (default; --bibtex-mode off disables)
 figures/                # with --figure-mode describe-and-keep
 ```
 
@@ -147,8 +151,8 @@ has a matching flag. Highlights:
 | `--no-table-refine`                                           | keep raw OCR tables (skip VLM restructuring)                  |
 | `--no-split` / `--page-numbers` / `--page-separators`         | output options                                                |
 | `--pages RANGE`                                               | page selection, e.g. `"1-10"`, `"3"`, `"5-"`                  |
-| `--bibtex` / `--bibtex-in-doc`                                | online Semantic Scholar BibTeX (opt-in)                       |
-| `--offline`                                                   | hard-disable all network use (URL input + BibTeX)             |
+| `--bibtex-mode {off,on,auto}` / `--bibtex-in-doc`             | BibTeX mode (default `auto`; `--bibtex` ⇒ `on`)               |
+| `--offline`                                                   | no network: URL input + online BibTeX sources disabled        |
 | `--mode {sequential,concurrent}`                              | one model resident at a time (default) vs. both (needs VRAM)  |
 | `--no-cache` / `--refresh`                                    | cache control                                                 |
 
@@ -161,11 +165,13 @@ reasoning, so don't shrink it without reason.
 
 ## Privacy / offline
 
-The OCR + figure-description core pipeline is **fully local** — your documents
-and figures go only to your own llama.cpp server on `127.0.0.1`, never to any
-cloud API. The only features that touch the network are (1) downloading a PDF
-when the input is a URL and (2) the opt-in `--bibtex` lookup. Both are
-hard-disabled by `--offline`. No telemetry, no persisted secrets.
+**Your documents and figures never leave your machine** — they go only to your
+own llama.cpp server on `127.0.0.1`, never to any cloud model. The only
+features that touch the network are (1) downloading a PDF when the input is a
+URL and (2) the BibTeX citation lookups (on by default), which send **only the
+extracted title or arXiv ID** to citation APIs — never the document. Both are
+hard-disabled by `--offline` (BibTeX then degrades to a clearly-marked,
+fully-local best-effort entry). No telemetry, no persisted secrets.
 
 ## Development
 

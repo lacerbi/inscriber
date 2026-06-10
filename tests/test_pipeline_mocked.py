@@ -38,7 +38,12 @@ def _dummy_models(tmp_path) -> dict:
     return paths
 
 
-def _mock_inference(monkeypatch):
+def _mock_inference(monkeypatch, *, probe_response='{"citable": false}'):
+    """Mock serve + both chat surfaces. The text-only ``chat`` fake serves the
+    BibTeX probe ("bibliographic metadata" discriminator); its default answer is
+    non-citable so auto-mode runs stay network-free unless a test opts in.
+    Returns the list of probe prompts (for cache-hit assertions)."""
+
     @contextmanager
     def fake_serve(self, spec):
         yield "http://fake:1"
@@ -57,6 +62,25 @@ def _mock_inference(monkeypatch):
         return "<img_desc>A line chart trending upward.</img_desc>"  # VLM call
 
     monkeypatch.setattr(ChatClient, "chat_image", fake_chat_image)
+
+    probe_calls: list[str] = []
+
+    def fake_chat(self, messages, *, max_tokens=None, sampling=None,
+                  timeout_s=None, chat_template_kwargs=None):
+        self.last_finish_reason = "stop"
+        self.last_completion_tokens = 10
+        text = " ".join(
+            part.get("text", "") if isinstance(part, dict) else str(part)
+            for m in messages
+            for part in (m["content"] if isinstance(m["content"], list) else [m["content"]])
+        )
+        if "bibliographic metadata" in text:  # BibTeX probe (text-only)
+            probe_calls.append(text)
+            return probe_response
+        raise AssertionError(f"unexpected text-only chat call: {text[:80]!r}")
+
+    monkeypatch.setattr(ChatClient, "chat", fake_chat)
+    return probe_calls
 
 
 def test_full_run_mocked(tmp_path, monkeypatch, hermetic_cache):
@@ -234,6 +258,37 @@ def test_failed_ocr_page_is_not_cached(tmp_path, monkeypatch, hermetic_cache):
     ocr_cache = tmp_path / "ocrcache"
     page_entries = [p for p in ocr_cache.glob("*.json") if p.name != "hashes.json"]
     assert page_entries == []
+
+
+def test_default_auto_bibtex_not_citable_writes_no_bib(tmp_path, monkeypatch, hermetic_cache):
+    # bibtex.mode defaults to "auto"; the harness probe answers {"citable": false}
+    # → abstain: no .bib, no network (PLAN-bibtex-auto B4 default flip).
+    probe_calls = _mock_inference(monkeypatch)
+    out = tmp_path / "out"
+    cfg = _base_cfg(tmp_path, _dummy_models(tmp_path), out)
+    written = pipeline.run(cfg)
+    assert len(probe_calls) == 1
+    assert not (out / "sample_paper.bib").exists()
+    assert all(not w.endswith(".bib") for w in written)
+
+
+def test_default_auto_bibtex_offline_citable_best_efforts(tmp_path, monkeypatch, hermetic_cache):
+    # Default auto + --offline + citable probe → marked best-effort entry,
+    # assembled fully locally (the chain makes no network call offline).
+    probe_calls = _mock_inference(
+        monkeypatch,
+        probe_response='{"citable": true, "title": "A Sample Paper", "authors": ["Ada B"]}',
+    )
+    out = tmp_path / "out"
+    cfg = _base_cfg(tmp_path, _dummy_models(tmp_path), out)
+    cfg.net.offline = True
+    written = pipeline.run(cfg)
+    assert len(probe_calls) == 1
+    bib = out / "sample_paper.bib"
+    assert str(bib) in written
+    text = bib.read_text(encoding="utf-8")
+    assert text.startswith("% NOTE: Best-effort entry")
+    assert "title={A Sample Paper}" in text
 
 
 def test_run_no_figures_offline_smoke(tmp_path, monkeypatch, hermetic_cache):

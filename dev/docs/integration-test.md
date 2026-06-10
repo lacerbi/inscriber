@@ -77,10 +77,25 @@ VLM_P=$MODELS/gemma-4-E4B-it-mmproj-BF16.gguf
    no VLM).
 
 6. **No figures / offline** — `inscriber run sample_paper.pdf --no-figures --offline`
-   produces a clean text-only document with no VLM server launched.
+   produces a clean text-only document with no VLM server launched. Note:
+   BibTeX defaults to `auto` — with no VLM configured the probe is skipped
+   with a warning and no `.bib` appears; with `--vlm-model`/`--vlm-mmproj` set,
+   the probe runs locally and a citable document yields a clearly-marked
+   best-effort `out/….bib` (fully offline — verify no network traffic).
 
-7. **BibTeX (online)** — `--bibtex` writes `out/sample_paper.bib`; `--bibtex-in-doc`
-   also prepends a fenced entry to `paper.md` / `paper.main.md`.
+7. **BibTeX** — default `auto`:
+   - an arXiv-URL run (step 8) writes `out/….bib` **without a probe call**
+     (look for `BibTeX (auto): wrote entry via s2-arxiv-id` — the published
+     version when one exists, else the arXiv `@misc`);
+   - a local citable PDF goes through the probe (one extra small VLM call,
+     cached on re-runs) then the title-search/best-effort chain;
+   - a non-citable PDF (slides, an invoice) logs `document judged not
+     citable; skipping` and writes no `.bib` —
+     `dev/scripts/bibtex_probe_check.py` covers the probe verdicts standalone
+     (record any prompt change in `dev/docs/bibtex-probe-findings.md`);
+   - explicit `--bibtex` (= `--bibtex-mode on`) keeps the original
+     always-look-up path; `--bibtex-in-doc` also prepends a fenced entry to
+     `paper.md` / `paper.main.md`.
 
 8. **URL input** — `inscriber run https://arxiv.org/abs/<id> -o out …` downloads and
    processes (requires network; blocked by `--offline`).
