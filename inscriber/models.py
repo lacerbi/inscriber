@@ -19,8 +19,9 @@ class ResolutionMode(str, Enum):
     """DeepSeek-OCR native resolution ladder + the dense-page Gundam opt-in.
 
     The ``long_edge_px`` is the rasterizer's render target (long edge, in px).
-    For ``gundam`` the rasterizer renders one high-res page (>=1280px) and the
-    model tiles it internally (DESIGN §7 table) — the rasterizer does NOT tile.
+    ``gundam`` was meant as the model-side tiling mode, but the pinned llama.cpp
+    build does NOT tile (dev/docs/gundam-findings.md) — it is currently a strict
+    alias of ``large``; raising its render target is a pending decision (TODO.md).
     """
 
     TINY = "tiny"

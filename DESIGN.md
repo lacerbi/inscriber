@@ -12,10 +12,13 @@
 > `paper2llm`). It is written to be read entirely standalone — every concept,
 > dependency, and external quirk needed to build v1 is described here.
 >
-> **Last updated:** 2026-06-10 (§2.2: BF16 loop observed in the wild — equation
-> fidelity verified on real hardware, see `dev/docs/equation-fidelity-findings.md`.
-> Earlier same day: §9.2/§9.6 one-VLM-instance consolidation; §9.7 nested-table
-> guard; added §9.7; aligned §2.1–2.2, §8.3, §25 with the M1a-confirmed facts)
+> **Last updated:** 2026-06-10 (§2.2/§22.2: DeepSeek-OCR-2 is now supported
+> upstream — llama.cpp PR #20975 — adoption gated on the TODO spike; research
+> in `dev/docs/upstream-watch.md`. Earlier same day: Gundam confirmed — no
+> tiling on build 9028, gundam ≡ `large`, frame render-size-invariant
+> (`dev/docs/gundam-findings.md`); BF16 loop observed in the wild
+> (`dev/docs/equation-fidelity-findings.md`); §9.2/§9.6 one-VLM-instance
+> consolidation; §9.7 nested-table guard)
 
 ---
 
@@ -132,14 +135,19 @@ So **every** model `inscriber` uses (OCR and VLM) is configured as a
   2026-03-25). Requires a `deepseek-ocr` model GGUF + `mmproj-deepseek-ocr`
   projector GGUF; reference GGUFs live in the `ggml-org/DeepSeek-OCR-GGUF` HF
   collection.
-- **Version note (settled).** A successor, **DeepSeek-OCR-2** (official; arXiv
-  2601.20552 "Visual Causal Flow", deepseek-ai, ~27 Jan 2026, Apache-2.0, new
-  DeepEncoder V2), exists and is real — but **llama.cpp supports only the
-  _original_ DeepSeek-OCR** (arXiv 2510.18234, the DeepSeek3B-MoE-A570M decoder).
-  **PR #17400 targets the original**, all ready-to-use GGUFs are for the original,
-  and there is **no llama.cpp PR/issue for v2** as of June 2026. So **v1 targets
-  the original DeepSeek-OCR**; DeepSeek-OCR-2 is future work, gated on upstream
-  llama.cpp support (§22.2).
+- **Version note (updated 2026-06-10).** A successor, **DeepSeek-OCR-2**
+  (official; arXiv 2601.20552 "Visual Causal Flow", deepseek-ai, ~27 Jan 2026,
+  Apache-2.0, new DeepEncoder V2), is now **supported upstream**: llama.cpp
+  PR #20975 (merged 2026-05-29, post-dating the pinned build 9028) ships it
+  **with multi-tile dynamic-resolution preprocessing**, and GGUFs exist
+  (`sabafallah/DeepSeek-OCR-2-GGUF`). It is a **different backend, not a
+  drop-in** — on the server path v2 *requires* `--chat-template deepseek-ocr
+  --no-jinja` (v1 must NOT pass a template), plus `--flash-attn off` and its
+  own DRY tuning — and its grounding format/coordinate frame in llama.cpp are
+  **unverified**. **v1 targets the original DeepSeek-OCR** (arXiv 2510.18234,
+  the DeepSeek3B-MoE-A570M decoder, PR #17400); adopting v2 is gated on the
+  verification spike in `TODO.md` (§22.2; research record:
+  `dev/docs/upstream-watch.md`).
 - **Quirks (must be respected):**
   - Use **f16** weights. **Q4_K_M causes runaway repetition loops** because the
     upstream model uses an **n-gram repetition penalty (ngram_size≈30,
@@ -174,10 +182,13 @@ So **every** model `inscriber` uses (OCR and VLM) is configured as a
     dense/multi-column pages. There is **no "standard" mode** (an earlier draft
     invented one). `inscriber` **defaults to `large`**, exposes the full ladder,
     and `gundam` as the dense-page opt-in (§7, §13). See §7 for the mode→render
-    mapping, and note that **Gundam tiling is model-side behavior**: the
-    rasterizer renders a single high-res page image and the model tiles it — the
-    grounding-coordinate frame for Gundam must be confirmed during M1
-    (coords may be relative to the 1024 global view, not the tiles).
+    mapping. ✅ **Confirmed (2026-06-10, `dev/docs/gundam-findings.md`): build
+    9028 does NOT tile** — every input is encoded as one slice (vision tokens
+    saturate at 421 for ≥1664 px long edge vs 273 at 1280), so `gundam`
+    (rendering 1280, like `large`) is currently a **strict alias of `large`**,
+    and the grounding frame is the same padded-square at every input size.
+    Whether gundam should render ≥1664 to buy the larger encoding is a pending
+    decision (`TODO.md`).
 
 > ✅ **Grounding format & coordinate frame (CONFIRMED — M1a, build 9028;
 > evidence in `dev/docs/M1A-FINDINGS.md` Q2–Q3, locked in
@@ -207,9 +218,13 @@ So **every** model `inscriber` uses (OCR and VLM) is configured as a
 > ```
 >
 > The mapping lives in `DeepSeekOcrBackend` (`grid_to_norm`), keeping
-> `bbox_norm` original-page-relative for the rest of the pipeline (§8.2). The
-> **Gundam** mode's frame (global view vs. tiles) remains unconfirmed (tracked
-> in `TODO.md`); re-verify format + frame on any llama.cpp upgrade.
+> `bbox_norm` original-page-relative for the rest of the pipeline (§8.2).
+> **Gundam-size inputs are confirmed to use the SAME frame** — build 9028 does
+> not tile, and grid coords are render-size-invariant
+> (`dev/docs/gundam-findings.md`, golden-tested at a 1536×2048 render);
+> re-verify format + frame on any llama.cpp upgrade. High-res renders also
+> ground display equations as their own `equation` blocks (the parser keeps
+> unknown labels' text verbatim).
 
 ### 2.3 Gemma 4 (first VLM backend)
 
@@ -553,7 +568,7 @@ Responsibilities:
   | `small`  | 640px                                         |                                                                                                                    |
   | `base`   | 1024px                                        |                                                                                                                    |
   | `large`  | **1280px (default)**                          | balanced; good for most papers                                                                                     |
-  | `gundam` | render high-res (≥1280px); **model tiles it** | densest pages; the rasterizer does _not_ tile — it renders one large page and DeepSeek-OCR tiles internally (§2.2) |
+  | `gundam` | render high-res (currently 1280px) | ⚠️ the pinned build does **not** tile (§2.2) — gundam ≡ `large` today; raising its render target to ≥1664 (saturated 421-token encoding) is a pending decision (`TODO.md`) |
 
 - Return `[PageImage(page_number, png_bytes, width_px, height_px)]`. The
   `(width_px, height_px)` are the **original rendered page** dimensions and are
@@ -1783,10 +1798,15 @@ is wired.
 
 - **More grounding-capable OCR backends** — Dots.OCR (#17575, JSON layout _with_
   boxes; natural next backend) and HunyuanOCR (#21395).
-- **DeepSeek-OCR-2** (arXiv 2601.20552, DeepEncoder V2 "Visual Causal Flow",
-  +3.73% OmniDocBench over the original) — a likely upgrade once it has a
-  **llama.cpp path**, which does not exist yet (no PR/GGUFs as of June 2026). Its
-  grounding/coordinate convention must be re-confirmed when that lands.
+- **DeepSeek-OCR-2** (arXiv 2601.20552, DeepEncoder V2 "Visual Causal Flow";
+  +3.73% OmniDocBench, reading-order edit 0.085→0.057, repetition rate ~⅓
+  lower, native multi-tile dynamic resolution) — **upstream support landed**
+  (llama.cpp PR #20975, merged 2026-05-29; GGUFs available; needs a build
+  newer than the pinned 9028). A likely upgrade, gated on the spike in
+  `TODO.md`: its grounding format + coordinate frame **under real tiling**
+  must be confirmed with the M1a calibration discipline, and it needs a new
+  `deepseek-ocr-2` backend (different server template/flags). Research
+  record: `dev/docs/upstream-watch.md`.
 - **Table reconstruction across page breaks** (§10.3) — currently a documented
   limitation.
 - **Batch mode** — process a directory of PDFs reusing a single warm server.

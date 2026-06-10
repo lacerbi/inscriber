@@ -8,10 +8,16 @@ Legend: `[ ]` todo · `[!]` blocked.
 
 ## Pending real-hardware verifications
 
-- [ ] **Gundam coordinate frame** (DESIGN §2.2/§8.3; M1A-FINDINGS Q2): when
-      `--ocr-resolution gundam` is first exercised, determine empirically
-      whether grounding coords are relative to the 1024 global view or the
-      tiles; extend the `grid_to_norm` golden tests with the answer.
+- [ ] **Gundam render target** (`dev/docs/gundam-findings.md`): build 9028
+      does not tile, so gundam is currently a strict alias of `large` (both
+      render 1280). Rendering ≥1664 buys the saturated 421-token visual
+      encoding (vs 273 at 1280; ~3× encode time). Decide whether
+      `ResolutionMode.GUNDAM.long_edge_px` becomes 2048 — validate OCR quality
+      on dense pages first. (The coordinate frame itself is resolved:
+      padded-square at every input size, golden-tested.) Consider simply
+      waiting for upstream v1 tiling instead
+      (`dev/docs/upstream-watch.md` §1) — real tiling would change the
+      question's shape entirely.
 - [ ] **OCR loop/truncation detection** (`dev/docs/equation-fidelity-findings.md`):
       a real page looped at BF16 + grounded prompt + DRY and was **silently
       cached** with half its text missing — `DeepSeekOcrBackend.ocr_page` never
@@ -31,6 +37,25 @@ Legend: `[ ]` todo · `[!]` blocked.
       gain). The validated prompt is a single user message — re-validate on
       real hardware before adopting.
 
+## Upstream llama.cpp watch (researched 2026-06-10 — `dev/docs/upstream-watch.md`)
+
+- [ ] **DeepSeek-OCR 2 spike** — upstream support landed (llama.cpp PR #20975,
+      2026-05-29; GGUFs at `sabafallah/DeepSeek-OCR-2-GGUF`, bf16 5.9+0.9 GB).
+      Paper: +3.73% OmniDocBench, reading order 0.085→0.057, repetition rate
+      ~⅓ lower (our loop class), and the llama.cpp impl ships WITH multi-tile
+      dynamic resolution. Gated on: (i) grounding format + coordinate frame
+      under tiling — full M1a calibration discipline, `gundam_check.py`
+      reusable; (ii) loop check on the known-bad page (PriorGuide p. 5);
+      (iii) real-page format capture → fixtures. Requires a build newer than
+      pinned 9028 and a new `deepseek-ocr-2` backend (different server
+      template/flags — `--chat-template deepseek-ocr --no-jinja`,
+      `--flash-attn off`, its own DRY tuning); zero pipeline changes (§8).
+- [ ] **v1 Gundam tiling** — descoped from #17400; the follow-up PR #24300 was
+      closed 2026-06-09 in favor of a generic batching API (PR #24384, WIP
+      draft). Watch #24384 + the DSOCR re-adaptation on top of it; stall risk
+      noted in the watch doc. When it lands, revisit the gundam render-target
+      item above.
+
 ## Planned features
 
 - [ ] **Publish to PyPI** — the name `inscriber` was verified available
@@ -45,6 +70,16 @@ Legend: `[ ]` todo · `[!]` blocked.
       own reference list.
 
 ## Code debts (2026-06-10 implementation review)
+
+- [ ] **llama.cpp build identity is not cache-key material** (DESIGN §8.6 keys
+      cover model/mmproj content, prompt, sampling — not the server build).
+      Upstream preprocessing changes (e.g. llama.cpp PR #23345, post-9028)
+      change model outputs without busting the cache → stale entries served
+      silently after an upgrade. Interim rule: `--refresh` after any llama.cpp
+      upgrade. Fix: fold a server/build identity (e.g. `llama-server --version`
+      output or binary content hash) into the OCR + VLM keys — bumps every
+      key once, so land it together with another cache-affecting change if
+      possible.
 
 - [ ] **`VlmCache` value field naming**: restructured tables are stored under a
       JSON field literally named `"description"` — harmless (key payloads are

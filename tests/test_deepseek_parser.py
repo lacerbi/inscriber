@@ -91,6 +91,23 @@ def test_parse_calibration_fixture():
     assert "[[305" not in res.markdown
 
 
+def test_parse_calibration_gundam2048_fixture_same_global_frame():
+    """Real output captured at a 1536x2048 render — a gundam-sized input
+    (dev/docs/gundam-findings.md): build 9028 does NOT tile, so the grounding
+    frame is STILL the padded square at every input size. Grid coords are
+    render-size-invariant and grid_to_norm recovers the true calibration box
+    ((150,200,450,520)pt on the 600x800pt page → (0.25, 0.25, 0.75, 0.65))."""
+    raw = (FIXTURES / "deepseek_calibration_gundam2048_raw.txt").read_text(encoding="utf-8")
+    page = PageImage(page_number=1, png_bytes=b"", width_px=1536, height_px=2048)
+    res = DeepSeekOcrBackend().parse(raw, page)
+
+    figs = [r for r in res.regions if r.is_figure]
+    assert len(figs) == 1
+    expected = (0.25, 0.25, 0.75, 0.65)
+    for got, want in zip(figs[0].bbox_norm, expected, strict=True):
+        assert got == pytest.approx(want, abs=0.02)
+
+
 # --------------------------------------------------------------------------- #
 # Sample-paper fixture (richer: title/text/image/caption/math)
 # --------------------------------------------------------------------------- #

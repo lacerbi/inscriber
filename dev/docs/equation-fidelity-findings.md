@@ -79,8 +79,10 @@ Consequences observed:
    cached run reproduces the damage. "Never cache a failed result" holds only
    because the failure was never detected.
 4. Determinism means `--refresh` will NOT fix such a page (same input → same
-   loop); the realistic remedies are a different `--ocr-resolution` for that
-   page, or hand-editing the bundle markdown (the two-step workflow).
+   loop). A different render size is NOT a reliable remedy either: the same
+   page re-rendered at 2048 px long edge also degenerated, just in a different
+   shape (`gundam-findings.md`). The realistic fix is hand-editing the bundle
+   markdown (the two-step workflow).
 
 Follow-up tracked in `TODO.md`: detect `finish_reason != "stop"` on OCR pages →
 warn loudly + do not cache (mirror the table pass, which already treats

@@ -60,7 +60,8 @@
   py = grid_y / 999 * L - pad_y
   x_norm = clamp(px / W_px, 0, 1);  y_norm = clamp(py / H_px, 0, 1)
   ```
-- Gundam frame (global 1024 view vs tiles) still TODO when Gundam is exercised.
+- Gundam frame: **resolved 2026-06-10** — no tiling on this build; the same
+  padded-square frame applies at every input size (`gundam-findings.md`).
 
 ## ⚠️ Q3 — Grounding OUTPUT FORMAT (not `<|ref|>`/`<|det|>`)
 
@@ -114,5 +115,7 @@ M1b's parser + coordinate mapping are locked to: **server HTTP path**, **image-f
 > **Update (2026-06-10):** the **bf16 confirmation is closed** — all subsequent
 > real runs (the 39-page test paper incl. grounded figures/tables, and the table
 > verification) used `deepseek-ocr-bf16.gguf` per the working config and produced
-> the same `LABEL[[bbox]]` format with correct padded-square crops. Gundam frame
-> remains open (`TODO.md`).
+> the same `LABEL[[bbox]]` format with correct padded-square crops. The **Gundam
+> frame is closed too** (later the same day): no tiling on this build, frame
+> render-size-invariant — see `gundam-findings.md`, which also adds `equation`
+> to the observed-labels list (emitted at high-res renders).

@@ -1,0 +1,6 @@
+title[[148, 73, 423, 109]]
+Calibration Page  
+
+image[[305, 245, 690, 650]]
+image_caption[[309, 664, 477, 685]]
+<center>Figure 1: calibration box. </center>
