@@ -25,6 +25,7 @@ Legend: `[ ]` todo · `[!]` blocked.
       Cache safety is already handled (build identity became key material
       2026-06-10). On pass, update the build-9028 pins in DESIGN §2.x /
       README / AGENTS; on regressions, point `bin_dir` back to `llms/`.
+- [ ] **Gundam render target** (`dev/docs/gundam-findings.md`): build 9028
       does not tile, so gundam is currently a strict alias of `large` (both
       render 1280). Rendering ≥1664 buys the saturated 421-token visual
       encoding (vs 273 at 1280; ~3× encode time). Decide whether
