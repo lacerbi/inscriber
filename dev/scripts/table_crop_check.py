@@ -25,7 +25,7 @@ pipeline default. Outputs land in out-tablecrop/ (gitignored).
 Usage::
 
     python dev/scripts/table_crop_check.py \
-        --bin-dir "C:/Users/luigi/llms" \
+        --bin-dir "C:/Users/luigi/llms/new" \
         --ocr-model "C:/Users/luigi/llms/models/deepseek-ocr-bf16.gguf" \
         --ocr-mmproj "C:/Users/luigi/llms/models/mmproj-deepseek-ocr-bf16.gguf" \
         --paper %TEMP%/arxiv-2510.13763.pdf --pages 7,27,33,36,37 \
@@ -50,7 +50,12 @@ import fitz  # noqa: E402  (PyMuPDF)
 from PIL import Image  # noqa: E402
 
 from inscriber.llama.client import ChatClient  # noqa: E402
-from inscriber.llama.server import LlamaServerManager, ServerSpec  # noqa: E402
+from inscriber.llama.server import (  # noqa: E402
+    LlamaServerManager,
+    ServerSpec,
+    build_number,
+    llama_build_identity,
+)
 from inscriber.models import PageImage, Region, ResolutionMode  # noqa: E402
 from inscriber.ocr.base import HttpInferencer  # noqa: E402
 from inscriber.ocr.deepseek import DeepSeekOcrBackend  # noqa: E402
@@ -237,6 +242,15 @@ def main() -> int:
     OUT.mkdir(exist_ok=True)
     pages = [int(x) for x in args.pages.split(",") if x.strip()]
     pdf = Path(args.paper).expanduser().read_bytes()
+
+    # The pipeline's min-build gate, mirrored (DESIGN §2.2): an older build's
+    # padded-square grounding frame would silently shift every table crop.
+    min_build = DeepSeekOcrBackend.min_server_build
+    num = build_number(llama_build_identity(args.bin_dir))
+    if num is not None and min_build and num < min_build:
+        print(f"llama.cpp build {num} < {min_build}: wrong grounding frame "
+              f"(use the >={min_build} binaries; see config.toml bin_dir note)")
+        return 1
 
     jobs = ocr_phase(args, pages, pdf)
     matched = [j for j in jobs if j.region is not None]
