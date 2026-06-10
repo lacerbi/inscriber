@@ -74,6 +74,12 @@ Legend: `[ ]` todo · `[!]` blocked.
 
 ## Planned features
 
+- [ ] **BibTeX `auto` mode** — classify citability (provenance heuristics +
+      a cached LLM probe) → source chain (arXiv-by-ID → Semantic Scholar →
+      local best-effort entry), with a privacy taint rule so a local-PDF run
+      stays fully offline by default. Full design + phased roadmap (B0–B4):
+      `PLAN-bibtex-auto.md`. Subsumes the arXiv half of the alternate-sources
+      item below.
 - [ ] **Publish to PyPI** — the name `inscriber` was verified available
       (DESIGN §18) but nothing is published yet; README documents source
       install until then.
@@ -83,7 +89,8 @@ Legend: `[ ]` todo · `[!]` blocked.
 - [ ] **Alternate BibTeX sources** — Crossref / arXiv API as fallbacks to
       Semantic Scholar (unauthenticated 429s are common in practice; the
       degrade path is DESIGN §12), or fully-offline extraction from the paper's
-      own reference list.
+      own reference list. The arXiv-by-ID source is planned as phase B3 of
+      `PLAN-bibtex-auto.md`; Crossref and reference-list extraction remain.
 
 ## Code debts (2026-06-10 implementation review)
 
