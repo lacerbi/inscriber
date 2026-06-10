@@ -8,13 +8,11 @@ tries several message shapes / prompts to find which triggers grounding.
 from __future__ import annotations
 
 import argparse
-import sys
 from pathlib import Path
 
 import httpx
 
-REPO = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO))
+from _common import REPO, fill_from_config  # bootstraps sys.path for inscriber
 
 from inscriber.llama.client import image_data_url  # noqa: E402
 from inscriber.llama.server import LlamaServerManager, ServerSpec  # noqa: E402
@@ -24,12 +22,15 @@ FIXTURES = REPO / "tests" / "fixtures"
 
 def main() -> int:
     p = argparse.ArgumentParser()
-    p.add_argument("--bin-dir", required=True)
-    p.add_argument("--ocr-model", required=True)
-    p.add_argument("--ocr-mmproj", required=True)
+    p.add_argument("--config", default=None,
+                   help="config file (default: ./config.toml, then the platform dir)")
+    p.add_argument("--bin-dir", default=None, help="default: [llama] bin_dir from config")
+    p.add_argument("--ocr-model", default=None, help="default: [ocr] model from config")
+    p.add_argument("--ocr-mmproj", default=None, help="default: [ocr] mmproj from config")
     p.add_argument("--ngl", type=int, default=99)
     p.add_argument("--png", default=str(FIXTURES / "calibration_large.png"))
     args = p.parse_args()
+    fill_from_config(args, require=("bin_dir", "ocr_model", "ocr_mmproj"))
 
     png = Path(args.png).read_bytes()
     data_url = image_data_url(png)

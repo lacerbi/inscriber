@@ -25,14 +25,15 @@ format).
 
 ## Steps
 
-Set common flags (adjust paths):
+Set common flags from **your** `config.toml` values (machine-local, gitignored;
+the same file the CLI and the `dev/scripts/` harnesses read):
 
 ```
-BIN=C:/Users/luigi/llms/new          # must hold llama.cpp >= 9587
-MODELS=C:/Users/luigi/llms/models
+BIN=<your [llama] bin_dir>           # must hold llama.cpp >= 9587
+MODELS=/path/to/your/gguf/folder
 OCR_M=$MODELS/deepseek-ocr-bf16.gguf
 OCR_P=$MODELS/mmproj-deepseek-ocr-bf16.gguf
-VLM_M=$MODELS/gemma-4-E4B-it-Q4_K_M.gguf
+VLM_M=$MODELS/gemma-4-E4B-it-qat-UD-Q4_K_XL.gguf
 VLM_P=$MODELS/gemma-4-E4B-it-mmproj-BF16.gguf
 ```
 

@@ -21,14 +21,12 @@ Two facts to establish on the pinned build (follow-up to M1A-FINDINGS Q2):
 Outputs land in out-gundam/ (gitignored): raw model outputs + the llama-server
 log, whose mtmd lines reveal whether the image was tiled (token counts).
 
-Usage::
+Bin dir and model paths come from the discovered ``config.toml`` (the same
+lookup the CLI uses); the flags override. Usage::
 
     python dev/scripts/gundam_check.py \
-        --bin-dir "C:/Users/luigi/llms" \
-        --ocr-model "C:/Users/luigi/llms/models/deepseek-ocr-bf16.gguf" \
-        --ocr-mmproj "C:/Users/luigi/llms/models/mmproj-deepseek-ocr-bf16.gguf" \
         [--targets 1280,1664,2048,2560] \
-        [--paper %TEMP%/arxiv-2510.13763.pdf --paper-page 5 --paper-target 2048]
+        [--paper some_paper.pdf --paper-page 5 --paper-target 2048]
 """
 
 from __future__ import annotations
@@ -39,8 +37,7 @@ import sys
 import time
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(REPO))
+from _common import REPO, fill_from_config  # bootstraps sys.path for inscriber
 
 import fitz  # noqa: E402  (PyMuPDF)
 
@@ -115,9 +112,11 @@ def report(tag: str, raw: str, finish: str | None, secs: float, w: int, h: int) 
 
 def main() -> int:
     p = argparse.ArgumentParser()
-    p.add_argument("--bin-dir", required=True)
-    p.add_argument("--ocr-model", required=True)
-    p.add_argument("--ocr-mmproj", required=True)
+    p.add_argument("--config", default=None,
+                   help="config file (default: ./config.toml, then the platform dir)")
+    p.add_argument("--bin-dir", default=None, help="default: [llama] bin_dir from config")
+    p.add_argument("--ocr-model", default=None, help="default: [ocr] model from config")
+    p.add_argument("--ocr-mmproj", default=None, help="default: [ocr] mmproj from config")
     p.add_argument("--ngl", default="auto")
     p.add_argument("--ctx", type=int, default=16384)
     p.add_argument("--max-tokens", type=int, default=8192)
@@ -129,6 +128,7 @@ def main() -> int:
                    help="page number, or comma-separated list (e.g. 3,5,22)")
     p.add_argument("--paper-target", type=int, default=2048)
     args = p.parse_args()
+    fill_from_config(args, require=("bin_dir", "ocr_model", "ocr_mmproj"))
 
     # Windows console is cp1252; server logs contain fullwidth ｜ etc.
     if hasattr(sys.stdout, "reconfigure"):

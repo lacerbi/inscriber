@@ -10,13 +10,10 @@ using the actual inscriber inference layer:
       image) or the padded-1024² square? Determined by running on the calibration
       page and matching the emitted <|det|> coords to the committed predictions.
 
-Usage (once the mmproj GGUFs exist), e.g.::
+Usage (bin dir + model paths come from the discovered config.toml; flags
+override), e.g.::
 
-    python dev/scripts/m1a_spike.py \
-        --bin-dir "C:/Users/luigi/llms" \
-        --ocr-model "C:/Users/luigi/llms/models/deepseek-ocr-bf16.gguf" \
-        --ocr-mmproj "C:/Users/luigi/llms/models/mmproj-deepseek-ocr-bf16.gguf" \
-        --ngl 99 --resolution large [--paper some_paper.pdf]
+    python dev/scripts/m1a_spike.py --ngl 99 --resolution large [--paper some_paper.pdf]
 
 Writes raw outputs to tests/fixtures/ and prints a coordinate-frame verdict.
 """
@@ -26,11 +23,9 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import sys
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO))
+from _common import REPO, fill_from_config  # bootstraps sys.path for inscriber
 
 from inscriber.models import PageImage, ResolutionMode  # noqa: E402
 from inscriber.ocr.base import HttpInferencer, MtmdCliInferencer  # noqa: E402
@@ -122,9 +117,11 @@ def verdict(raw: str, mode: str) -> None:
 
 def main() -> int:
     p = argparse.ArgumentParser()
-    p.add_argument("--bin-dir", required=True)
-    p.add_argument("--ocr-model", required=True)
-    p.add_argument("--ocr-mmproj", required=True)
+    p.add_argument("--config", default=None,
+                   help="config file (default: ./config.toml, then the platform dir)")
+    p.add_argument("--bin-dir", default=None, help="default: [llama] bin_dir from config")
+    p.add_argument("--ocr-model", default=None, help="default: [ocr] model from config")
+    p.add_argument("--ocr-mmproj", default=None, help="default: [ocr] mmproj from config")
     p.add_argument("--ngl", type=int, default=99)
     p.add_argument("--ctx", type=int, default=8192)
     p.add_argument("--resolution", default="large", choices=[m.value for m in ResolutionMode])
@@ -134,6 +131,7 @@ def main() -> int:
     p.add_argument("--paper", default=None, help="optional real PDF to capture pages from")
     p.add_argument("--paper-pages", default="1-3", help="page range to capture from --paper")
     args = p.parse_args()
+    fill_from_config(args, require=("bin_dir", "ocr_model", "ocr_mmproj"))
 
     mode = ResolutionMode(args.resolution)
     pages = rasterize((FIXTURES / "calibration.pdf").read_bytes(), mode)  # [calibration]

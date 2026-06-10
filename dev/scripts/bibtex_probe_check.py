@@ -18,8 +18,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(REPO))
+from _common import REPO, fill_from_config  # bootstraps sys.path for inscriber
 
 import fitz  # noqa: E402  (PyMuPDF)
 
@@ -29,8 +28,6 @@ from inscriber.llama.client import ChatClient  # noqa: E402
 from inscriber.llama.server import LlamaServerManager, ServerSpec  # noqa: E402
 from inscriber.logging import setup_logging  # noqa: E402
 from inscriber.vlm.gemma import GemmaVlmBackend  # noqa: E402
-
-MODELS = "C:/Users/luigi/llms/models"
 
 
 def _make_slides_pdf(path: Path) -> None:
@@ -68,14 +65,17 @@ def _page1_text(pdf_path: Path) -> str:
 
 def main() -> int:
     p = argparse.ArgumentParser()
-    p.add_argument("--bin-dir", default="C:/Users/luigi/llms/new")
-    p.add_argument("--vlm-model", default=f"{MODELS}/gemma-4-E4B-it-qat-UD-Q4_K_XL.gguf")
-    p.add_argument("--vlm-mmproj", default=f"{MODELS}/gemma-4-E4B-it-mmproj-BF16.gguf")
+    p.add_argument("--config", default=None,
+                   help="config file (default: ./config.toml, then the platform dir)")
+    p.add_argument("--bin-dir", default=None, help="default: [llama] bin_dir from config")
+    p.add_argument("--vlm-model", default=None, help="default: [vlm] model from config")
+    p.add_argument("--vlm-mmproj", default=None, help="default: [vlm] mmproj from config")
     p.add_argument("--ngl", default="auto")
     p.add_argument("--ctx", type=int, default=16384)
     p.add_argument("--pdf", action="append", default=[],
                    help="extra PDF(s) to probe (no expected verdict)")
     args = p.parse_args()
+    fill_from_config(args, require=("bin_dir", "vlm_model", "vlm_mmproj"))
 
     for stream in (sys.stdout, sys.stderr):
         try:

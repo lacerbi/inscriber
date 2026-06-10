@@ -22,16 +22,13 @@ structure-damage-guard TODO item wants the same probe harness. Two phases:
 Servers run sequentially (OCR fully torn down before the VLM starts), like the
 pipeline default. Outputs land in out-tablecrop/ (gitignored).
 
-Usage::
+Bin dir and model paths come from the discovered ``config.toml`` (the same
+``./config.toml`` → platform-config-dir lookup the CLI uses); the flags
+override. Phase 2 runs whenever a VLM pair resolves — pass ``--ocr-only`` to
+skip it. Usage::
 
     python dev/scripts/table_crop_check.py \
-        --bin-dir "C:/Users/luigi/llms/new" \
-        --ocr-model "C:/Users/luigi/llms/models/deepseek-ocr-bf16.gguf" \
-        --ocr-mmproj "C:/Users/luigi/llms/models/mmproj-deepseek-ocr-bf16.gguf" \
-        --paper %TEMP%/arxiv-2510.13763.pdf --pages 7,27,33,36,37 \
-        [--vlm-model ".../gemma-4-E4B-it-qat-UD-Q4_K_XL.gguf" \
-         --vlm-mmproj ".../mmproj-BF16.gguf"] \
-        [--target 2048]
+        --paper paper.pdf --pages 9,27,33 [--ocr-only] [--target 2048]
 """
 
 from __future__ import annotations
@@ -43,8 +40,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(REPO))
+from _common import REPO, fill_from_config  # bootstraps sys.path for inscriber
 
 import fitz  # noqa: E402  (PyMuPDF)
 from PIL import Image  # noqa: E402
@@ -218,22 +214,26 @@ def vlm_phase(args, jobs: list[TableJob]) -> None:
 
 def main() -> int:
     p = argparse.ArgumentParser()
-    p.add_argument("--bin-dir", required=True)
-    p.add_argument("--ocr-model", required=True)
-    p.add_argument("--ocr-mmproj", required=True)
+    p.add_argument("--config", default=None,
+                   help="config file (default: ./config.toml, then the platform dir)")
+    p.add_argument("--bin-dir", default=None, help="default: [llama] bin_dir from config")
+    p.add_argument("--ocr-model", default=None, help="default: [ocr] model from config")
+    p.add_argument("--ocr-mmproj", default=None, help="default: [ocr] mmproj from config")
+    p.add_argument("--vlm-model", default=None, help="default: [vlm] model from config")
+    p.add_argument("--vlm-mmproj", default=None, help="default: [vlm] mmproj from config")
+    p.add_argument("--ocr-only", action="store_true",
+                   help="skip phase 2 (the page-vs-crop VLM comparison)")
     p.add_argument("--paper", required=True, help="local PDF with the probe tables")
     p.add_argument("--pages", required=True,
                    help="comma-separated 1-indexed page numbers (e.g. 7,27,33)")
     p.add_argument("--target", type=int, default=2048,
                    help="render long edge in px (default: the gundam 2048)")
-    p.add_argument("--vlm-model", default=None,
-                   help="optional: also run the page-vs-crop VLM comparison")
-    p.add_argument("--vlm-mmproj", default=None)
     p.add_argument("--ngl", default="auto")
     p.add_argument("--vlm-ngl", default="auto")
     p.add_argument("--ctx", type=int, default=16384)
     p.add_argument("--timeout", type=float, default=180.0)
     args = p.parse_args()
+    fill_from_config(args, require=("bin_dir", "ocr_model", "ocr_mmproj"))
 
     # Windows console is cp1252; model output can carry fullwidth glyphs etc.
     if hasattr(sys.stdout, "reconfigure"):
@@ -248,8 +248,8 @@ def main() -> int:
     min_build = DeepSeekOcrBackend.min_server_build
     num = build_number(llama_build_identity(args.bin_dir))
     if num is not None and min_build and num < min_build:
-        print(f"llama.cpp build {num} < {min_build}: wrong grounding frame "
-              f"(use the >={min_build} binaries; see config.toml bin_dir note)")
+        print(f"llama.cpp build {num} < {min_build}: wrong grounding frame — point "
+              f"[llama] bin_dir (or --bin-dir) at a >= {min_build} build")
         return 1
 
     jobs = ocr_phase(args, pages, pdf)
@@ -258,11 +258,14 @@ def main() -> int:
         f"\n=== OCR phase done: {len(jobs)} refinable table(s), "
         f"{len(matched)} matched to a grounded region ==="
     )
-    if args.vlm_model and args.vlm_mmproj:
+    if not args.ocr_only and args.vlm_model and args.vlm_mmproj:
         if jobs:
             vlm_phase(args, jobs)
+    elif args.ocr_only:
+        print("(--ocr-only: skipping the page-vs-crop comparison)")
     else:
-        print("(no --vlm-model/--vlm-mmproj: skipping the page-vs-crop comparison)")
+        print("(no VLM configured — [vlm] model/mmproj or --vlm-model/--vlm-mmproj: "
+              "skipping the page-vs-crop comparison)")
     print(f"\nartifacts saved under {OUT}/ — diff *_page.md vs *_crop.md against the PDF")
     return 0
 
