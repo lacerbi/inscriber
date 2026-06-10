@@ -20,5 +20,6 @@ venv/
 # inscriber runtime/test artifacts
 config.toml
 *.inscriber-ocr/
-/out/
+/out*/
+/out*.log
 tmp-*/
