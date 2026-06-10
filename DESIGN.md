@@ -202,9 +202,8 @@ So **every** model `inscriber` uses (OCR and VLM) is configured as a
 >
 > The mapping lives in `DeepSeekOcrBackend` (`grid_to_norm`), keeping
 > `bbox_norm` original-page-relative for the rest of the pipeline (§8.2). The
-> **Gundam** mode's frame (global view vs. tiles) remains unconfirmed — re-check
-> when Gundam is exercised, and re-verify format + frame on any llama.cpp
-> upgrade.
+> **Gundam** mode's frame (global view vs. tiles) remains unconfirmed (tracked
+> in `TODO.md`); re-verify format + frame on any llama.cpp upgrade.
 
 ### 2.3 Gemma 4 (first VLM backend)
 
@@ -1040,10 +1039,8 @@ context already sees clean tables):
   of the ~2–4k prompt). Gemma 4's thinking is activated explicitly per request
   via `chat_template_kwargs: {"enable_thinking": true}` (§2.3).
 
-**Open refinements** (deliberately not in this pass): cropping the table region
-for crisper headers (DeepSeek doesn't ground tables with boxes — no clean bbox);
-a system/user prompt split for prefix caching (the validated prompt is a single
-user message; change only with re-validation).
+**Open refinements** (deliberately not in this pass — a cropped-table input
+path and a system/user prompt split) are tracked in `TODO.md`.
 
 ---
 
@@ -1712,6 +1709,9 @@ llama.cpp over HTTP.
 
 ## 22. Open questions / future work
 
+> Concrete, near-term actionables (pending verifications, code debts) are
+> tracked in **`TODO.md`** — this section is the longer-horizon work.
+
 ### 22.1 Deferred OCR backends: GLM-OCR & PaddleOCR-VL (text-SOTA; figures TBD)
 
 GLM-OCR (#19677) and PaddleOCR-VL-1.5 (#18825) are **SOTA at text/table/equation
@@ -1764,19 +1764,6 @@ is wired.
   grounding/coordinate convention must be re-confirmed when that lands.
 - **Table reconstruction across page breaks** (§10.3) — currently a documented
   limitation.
-- **Table-restructuring follow-ups** (beyond the open refinements in §9.7; from
-  the 2026-06-10 implementation review): (a) consolidate the duplicated
-  scaffolding between `_refine_tables` and `_vlm_describe` — each builds its own
-  keys-only backend, `VlmCache`, and model identities, and the table prompt is
-  assembled twice (once for the cache key, once inside the backend call); these
-  must stay in sync or be unified. (b) `VlmCache` stores restructured tables
-  under a JSON field literally named `"description"` — harmless (key payloads
-  are disjoint) but misleading. (c) Blob-detection edge cases that would
-  mis-splice: a genuinely _nested_ `<table>` (the non-greedy match leaves an
-  orphan tail) and a `<table>` inside a fenced code block — both unobserved in
-  DeepSeek output; revisit if another OCR backend can emit them.
-- **Equation fidelity** — verify DeepSeek-OCR's LaTeX/math output quality on real
-  papers; may need a normalization pass.
 - **Batch mode** — process a directory of PDFs reusing a single warm server.
 - **Model auto-download helper** — optional command to fetch recommended GGUFs
   from Hugging Face (kept out of the core, opt-in, online).

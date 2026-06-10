@@ -37,6 +37,9 @@ RTX 4060 8GB.
   (`M1A-FINDINGS.md`, `table-reconstruction-findings.md`) — consult them before
   changing model-facing behavior, and extend them when new real-hardware
   findings land.
+- `TODO.md` tracks concrete pending items (real-hardware verifications, code
+  debts, blocked refinements) — add to it rather than burying TODOs in spec
+  prose; longer-horizon future work stays in DESIGN §22.
 - `PLAN-inscriber-v1.md` is the build roadmap; `dev/` is developer-only scripts
   and notes (never user-facing).
 
