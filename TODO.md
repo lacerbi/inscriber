@@ -8,7 +8,23 @@ Legend: `[ ]` todo · `[!]` blocked.
 
 ## Pending real-hardware verifications
 
-- [ ] **Gundam render target** (`dev/docs/gundam-findings.md`): build 9028
+- [ ] **Verify llama.cpp build 9587 before trusting real runs** — the machine's
+      `config.toml` now points at build 9587 (`llms/new`, d2e22ed97); the
+      pinned-verified build is 9028 (`llms/` root). Apply the standing
+      upgrade discipline (DESIGN §2.2/§8.3: capture → compare → re-pin):
+      (i) `gundam_check.py --bin-dir .../llms/new` — grounding format still
+      parses, calibration box still padded-square (`[312, 250, 687, 649]`),
+      and whether 9587 now **tiles** at ≥1664 px (mtmd token counts in the
+      server log; 9587 post-dates the DeepSeek-OCR-2 merge and ~550 builds of
+      preprocessing churn);
+      (ii) `m1b_check.py --bin-dir .../llms/new --no-cache` — real-page output
+      vs the golden fixtures (`deepseek_paper_p1_raw.txt`);
+      (iii) `verify_thinking_spike.py` — Gemma `enable_thinking` still toggles;
+      (iv) the known-loop page (PriorGuide p. 5, `gundam_check.py --paper`)
+      — loop behavior may change either way.
+      Cache safety is already handled (build identity became key material
+      2026-06-10). On pass, update the build-9028 pins in DESIGN §2.x /
+      README / AGENTS; on regressions, point `bin_dir` back to `llms/`.
       does not tile, so gundam is currently a strict alias of `large` (both
       render 1280). Rendering ≥1664 buys the saturated 421-token visual
       encoding (vs 273 at 1280; ~3× encode time). Decide whether
