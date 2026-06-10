@@ -6,19 +6,6 @@ empirical evidence records cited below live in `dev/notes/`.
 
 Legend: `[ ]` todo · `[!]` blocked.
 
-## Pending real-hardware verifications
-
-- [ ] **OCR loop/truncation detection** (`dev/notes/2026-06-10-equation-fidelity-findings.md`):
-      a real page looped at BF16 + grounded prompt + DRY and was **silently
-      cached** with half its text missing — `DeepSeekOcrBackend.ocr_page` never
-      checks `finish_reason`. Detect `finish_reason != "stop"` → warn loudly +
-      don't cache the page (DESIGN §16 already promises the logging; mirror the
-      table pass's truncation handling). Note `--refresh` can't fix such a page
-      (deterministic); suggest a different `--ocr-resolution` in the warning.
-      (That specific page no longer loops on build 9587 —
-      `dev/notes/2026-06-10-build-9587-verification.md` §4 — but the detection gap remains
-      for whatever page loops next.)
-
 ## Table-restructuring pass (DESIGN §9.7)
 
 - [ ] **Cropped table input — validate on real hardware** (the prompt-pin
@@ -78,6 +65,26 @@ Legend: `[ ]` todo · `[!]` blocked.
 
 ## Planned features
 
+- [ ] **Loop-breaking retry for truncated OCR pages** — detection shipped
+      2026-06-10 (`finish_reason != "stop"` → page flagged `truncated`, kept
+      best-effort, cached WITH the flag, re-warned on every hit; DESIGN §8.6 —
+      the flag gives a repair pass its target list). Two rungs, both
+      model-facing (real-hardware spike + dated note before adoption):
+      (a) **per-request stronger-DRY / seed-jitter retry** — DRY params are
+      per-request sampler params, so on detection re-run the page once with
+      stronger DRY; risks corrupting legitimately repetitive content (table
+      rows), and the same attractor may recur;
+      (b) **prefix-prefill + deflection** — find the repeated suffix text-side
+      (deterministic Python), prefill the assistant message up to just before
+      the first repetition, and deflect the first continuation token
+      (`logit_bias` ban / brief temperature burst / `n_probs`-driven
+      client-side decoding at the loop point). Gated on verifying that
+      llama-server supports assistant-message continuation with multimodal
+      input + DeepSeek-OCR's built-in template on build 9587.
+      Open: a repaired page came from different effective sampling — decide
+      its cache-key material. Reminder: a loop that self-terminates under the
+      cap emits `finish_reason: "stop"` and is invisible to the detector
+      (DESIGN §2.2 known limitation).
 - [ ] **Publish to PyPI** — the name `inscriber` was verified available
       (DESIGN §18) but nothing is published yet; README documents source
       install until then.

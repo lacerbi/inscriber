@@ -185,8 +185,66 @@ def test_match_table_regions_skips_degenerate_bbox():
     assert match_table_regions([BLOB], [sliver]) == [None]
 
 
-def test_match_table_regions_skips_textless_region():
+def test_match_table_regions_anchorless_region_is_skipped():
+    # Textless table region with no following region: nothing to anchor on.
     assert match_table_regions([BLOB], [_table_region("")]) == [None]
+    # ...or a following region that doesn't carry the blob either.
+    follower = Region(label="text", bbox_norm=(0.1, 0.8, 0.9, 0.9), text="prose only")
+    assert match_table_regions([BLOB], [_table_region(""), follower]) == [None]
+
+
+def test_match_table_regions_caption_carried_blob():
+    # The REAL build-9587 shape (deepseek_paper_table_p27_raw.txt): table[[bbox]]
+    # is an empty block — like image — and the following table_caption block
+    # carries the caption AND the <table> HTML. The TABLE region's bbox wins.
+    table = _table_region(None, bbox=(0.3, 0.1, 0.7, 0.25))
+    caption = Region(
+        label="table_caption",
+        bbox_norm=(0.3, 0.05, 0.7, 0.09),
+        text=f"Table A1: Characteristics.\n\n{BLOB}",
+    )
+    assert match_table_regions([BLOB], [table, caption]) == [table]
+
+
+def test_match_table_regions_caption_carried_multiple_tables():
+    def pair(blob: str, y: float) -> list[Region]:
+        return [
+            _table_region(None, bbox=(0.2, y, 0.8, y + 0.1)),
+            Region(
+                label="table_caption", bbox_norm=(0.2, y - 0.04, 0.8, y - 0.01),
+                text=f"Table: caption.\n\n{blob}",
+            ),
+        ]
+
+    regions = pair(BLOB, 0.1) + pair(BLOB2, 0.5)
+    matched = match_table_regions([BLOB, BLOB2], regions)
+    assert matched == [regions[0], regions[2]]
+
+
+def test_parse_and_match_real_table_page_fixture():
+    """Golden end-to-end pin on REAL captured output (build 9587, PriorGuide
+    p27 at gundam/2048): the parser passes table/table_caption through and the
+    matcher anchors the blob via the caption block to the table region's bbox."""
+    raw = (FIXTURES / "deepseek_paper_table_p27_raw.txt").read_text(encoding="utf-8")
+    from inscriber.models import PageImage
+
+    page = PageImage(page_number=27, png_bytes=b"", width_px=1583, height_px=2048)
+    res = DeepSeekOcrBackend().parse(raw, page)
+
+    tables = [r for r in res.regions if r.label == "table"]
+    assert len(tables) == 1
+    assert tables[0].text is None  # the empty block (anchor lives in the caption)
+    captions = [r for r in res.regions if r.label == "table_caption"]
+    assert len(captions) == 1 and "<table>" in captions[0].text
+
+    blobs = [b for _, _, b in find_table_blobs(res.markdown)]
+    assert len(blobs) == 1 and "Two-Moons" in blobs[0]
+    matched = match_table_regions(blobs, res.regions)
+    assert matched == [tables[0]]
+    # Raw emits table[[333, 128, 663, 226]] — per-axis grid/999.
+    assert matched[0].bbox_norm == pytest.approx(
+        (333 / 999, 128 / 999, 663 / 999, 226 / 999), abs=1e-6
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -390,7 +448,12 @@ def test_table_key_crop_fields_are_key_material():
 # pipeline integration (mocked at the chat boundary)
 # --------------------------------------------------------------------------- #
 
-RAW_TABLE_BLOCK = f"\n\ntable[[120, 870, 880, 960]]\n{BLOB}\n"
+# The REAL build-9587 table shape (deepseek_paper_table_p27_raw.txt): an empty
+# table[[bbox]] block; the following table_caption block carries caption + HTML.
+RAW_TABLE_BLOCK = (
+    f"\n\ntable[[120, 870, 880, 960]]\ntable_caption[[120, 845, 600, 865]]\n"
+    f"Table 1: Mock results.\n\n{BLOB}\n"
+)
 
 
 @pytest.fixture

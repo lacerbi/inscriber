@@ -95,6 +95,16 @@ Follow-up tracked in `TODO.md`: detect `finish_reason != "stop"` on OCR pages �
 warn loudly + do not cache (mirror the table pass, which already treats
 truncation as failure).
 
+> **Status (2026-06-10, same day):** detection landed, with one deliberate
+> deviation from the follow-up above — the truncated page is **cached with a
+> `truncated` flag and re-warned on every cache hit**, not left uncached. The
+> OCR key pins every output-determining knob (model/mmproj/build/resolution/
+> render px/prompt/sampling incl. the `max_tokens` cap), so a recompute could
+> only reproduce the same loop; the table pass's don't-cache is NOT the right
+> mirror because *its* key deliberately excludes `ctx_size` (a bigger `--ctx`
+> can fix a truncated table under the same key). Rationale + behavior:
+> DESIGN §8.6. Loop-breaking retry ideas: `TODO.md`.
+
 ## Conclusions
 
 1. **No LaTeX normalization pass.** Delimiters are already uniform; symbol

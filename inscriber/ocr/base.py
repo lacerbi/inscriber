@@ -35,6 +35,7 @@ __all__ = [
     "OcrBackend",
     "OcrPageResult",
     "Region",
+    "inference_truncated",
 ]
 
 logger = get_logger()
@@ -71,6 +72,10 @@ class HttpInferencer:
     def __init__(self, base_url: str) -> None:
         self.client = ChatClient(base_url)
         self.last_raw: str = ""  # last response, for cache raw-output capture
+        # Mirrored from the ChatClient after each call (None = unknown): backends
+        # read these to detect a truncated page (finish_reason != "stop", §2.2).
+        self.last_finish_reason: str | None = None
+        self.last_completion_tokens: int | None = None
 
     def infer(
         self,
@@ -90,6 +95,8 @@ class HttpInferencer:
             timeout_s=timeout_s,
         )
         self.last_raw = out
+        self.last_finish_reason = self.client.last_finish_reason
+        self.last_completion_tokens = self.client.last_completion_tokens
         return out
 
 
@@ -120,6 +127,10 @@ class MtmdCliInferencer:
         self.n_gpu_layers = n_gpu_layers
         self.ctx_size = ctx_size
         self.last_raw: str = ""
+        # A subprocess has no finish_reason — always None (unknown), so
+        # truncation detection degrades to "not detected" on this path.
+        self.last_finish_reason: str | None = None
+        self.last_completion_tokens: int | None = None
 
     def _resolve_exe(self) -> Path:
         exe = find_binary(self.bin_dir, "llama-mtmd-cli")
@@ -175,6 +186,19 @@ class MtmdCliInferencer:
             )
         self.last_raw = proc.stdout.strip()
         return self.last_raw
+
+
+def inference_truncated(inf: Inferencer) -> bool:
+    """Whether ``inf``'s last response was cut off (``finish_reason != "stop"``).
+
+    The repetition-loop signature (DESIGN §2.2): generation hit the token cap
+    instead of ending at EOS, so the page tail is missing. Mirrors the VLM
+    backends' truncation test — only a real string that isn't ``"stop"`` counts;
+    ``None``/missing means *unknown* (mtmd-cli, test fakes) and is treated as
+    not truncated.
+    """
+    finish_reason = getattr(inf, "last_finish_reason", None)
+    return isinstance(finish_reason, str) and finish_reason != "stop"
 
 
 # --------------------------------------------------------------------------- #

@@ -105,12 +105,17 @@ class OcrPageResult:
 
     ``markdown`` is clean markdown where figure regions are represented by
     ``⟦INSCRIBER_FIG:{id}⟧`` placeholders. ``regions`` are all detected regions
-    with bboxes already in the original-page [0,1] frame.
+    with bboxes already in the original-page [0,1] frame. ``truncated`` marks a
+    page whose generation stopped at the token cap rather than EOS — the
+    repetition-loop signature (DESIGN §2.2): page text after the loop point is
+    missing. The page is still the best available output; it is cached WITH the
+    flag and re-warned on every hit, never silently served (DESIGN §8.6).
     """
 
     page_number: int  # 1-indexed
     markdown: str
     regions: list[Region] = field(default_factory=list)
+    truncated: bool = False
 
 
 @dataclass

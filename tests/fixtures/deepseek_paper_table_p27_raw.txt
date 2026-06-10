@@ -1,0 +1,35 @@
+table[[333, 128, 663, 226]]
+table_caption[[334, 101, 664, 117]]
+Table A1: Characteristics of the simulator models.   
+
+<table>Modeldim(θ)dim(x)p train(θ)Two-Moons22UniformOUP225UniformTurin4101UniformGaussian Linear 10D1010GaussianGaussian Linear 20D2020GaussianBCI598Gaussian</table>  
+
+text[[175, 250, 823, 280]]
+simulated data using standardization. We use normalized parameter- data pairs \((\bar{\theta},\bar{\mathbf{x}})\) to train all amortized inference models.  
+
+text[[175, 285, 824, 357]]
+The likelihood function for this model involves integrating over latent sensory measurements and is computationally intensive. To obtain ground- truth posterior samples for BCI, we run the Variational Bayesian Monte Carlo (VBMC) algorithm (Acerbi, 2018; Huggins et al., 2023). Using VBMC's internal diagnostics, we retain ten reliable variational posteriors and merge them via posterior stacking (Silvestrin et al., 2025) to obtain the final ground- truth posterior.  
+
+text[[175, 362, 727, 378]]
+Table A1 summarizes the key properties of the simulator models in our experiments.  
+
+sub_title[[175, 394, 339, 409]]
+## C.2 TRAINING SETUP  
+
+text[[175, 419, 824, 476]]
+For all methods that require training, we use 10,000 simulated datasets from the simulator to train the model. Note that PriorGuide is a test- time technique that does not require separate training. For PriorGuide, we use the same base diffusion model as Simformer. Details on the model configurations and dataset setups are provided below.  
+
+text[[175, 482, 824, 525]]
+Simformer We adopt a similar setup as the Simformer paper Gloeckler et al. (2024), using the Variance Exploding Stochastic Differential Equation (VE- SDE) technique Song et al. (2021). It is defined by  
+
+equation[[265, 529, 822, 563]]
+\[f_{\mathrm{VE - SDE}}(x,t) = 0,\qquad g_{\mathrm{VE - SDE}}(t) = \sigma_{\mathrm{min}}\Big(\frac{\sigma_{\mathrm{max}}}{\sigma_{\mathrm{min}}}\Big)^{t}\sqrt{2\log\frac{\sigma_{\mathrm{max}}}{\sigma_{\mathrm{min}}}}. \quad (4)\]  
+
+text[[175, 575, 824, 673]]
+Throughout all experiments, we set \(\sigma_{\mathrm{max}} = 15\) , \(\sigma_{\mathrm{min}} = 10^{- 4}\) , and run the process over the time interval \(t \in [10^{- 5}, 1]\) . We use a transformer configuration similar to Simformer Gloeckler et al. (2024), with 6 layers, 4 heads (size 10), a token dimension 40, and a 128- dimensional Gaussian Fourier embedding for diffusion time. MLP blocks use a hidden dimension of 150. In all experiments, the condition mask was sampled per batch by uniformly selecting one of the following: joint, posterior, likelihood, or two random masks. Random masks were drawn from Bernoulli distributions with \(p = 0.3\) and \(p = 0.7\) , respectively. We use the same setup for all of the simulators.  
+
+text[[175, 678, 824, 763]]
+We train all the Simformer models using a batch size of 1,000 and an initial learning rate of 0.001. A linear learning rate schedule is used to decay the learning rate to \(1 \times 10^{- 6}\) , starting at half of the total number of training steps and completing by the final step. The optimizer combines adaptive gradient clipping with a maximum norm of 10.0 and the Adam optimizer Kingma & Ba (2015). Early stopping is applied based on validation loss, with the number of training steps constrained to a minimum of 5,000 and a maximum of 100,000 steps.  
+
+text[[175, 768, 824, 923]]
+Amortized Conditioning Engine (ACE) ACE (Chang et al., 2025) is a type of Neural Process (NP) (Garnelo et al., 2018; Nguyen & Grover, 2022; Müller et al., 2022), a family of models that learn to perform amortized inference by conditioning on a context set of input- output pairs to predict outputs for a target set of inputs. Differently from other neural processes which focus on pure data prediction, ACE is trained to condition on, and predict, both data and latent variables (e.g., model parameters in the case of SBI). During training, ACE was provided with simulator parameters that were randomly assigned to either the context or target set, so the model learns to generalize across varying observational conditions. For each experiment, a random number of data points \(N_{d}\) were sampled for the context set, with the remaining used as targets. Specifically, \(N_{d} \sim U(1,2)\) for Two- Moons, \(N_{d} \sim U(7,25)\) for OUP, \(N_{d} \sim U(30,101)\) for Turin, \(N_{d} \sim U(3,10)\) for Gaussian Linear, and \(N_{d} \sim U(29,98)\) for BCI.

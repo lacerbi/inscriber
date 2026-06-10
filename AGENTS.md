@@ -78,7 +78,11 @@ session) → stitch/clean → split (main/appendix/backmatter) → BibTeX (defau
   fully assembled prompt, sampling, and `chat_template_kwargs`. **Anything
   that changes model output must become key material.** `--refresh` recomputes
   and overwrites; `--no-cache` neither reads nor writes. Never cache a failed
-  result.
+  result. One deliberate nuance: a *truncated* OCR page (repetition loop hit
+  the token cap) IS cached, flagged `truncated`, and re-warned on every hit —
+  its key pins every output-determining knob, so a recompute could only
+  reproduce the loop (DESIGN §8.6; the table pass differs because its key
+  excludes `ctx_size`).
 
 ## Invariants and gotchas
 

@@ -21,7 +21,7 @@ from __future__ import annotations
 from typing import Literal
 
 from inscriber.models import OcrPageResult, PageImage, ResolutionMode
-from inscriber.ocr.base import Inferencer, OcrBackend
+from inscriber.ocr.base import Inferencer, OcrBackend, inference_truncated
 
 GLM_PROMPT = "Text Recognition:"
 
@@ -80,7 +80,11 @@ class GlmOcrBackend(OcrBackend):
             timeout_s=self.request_timeout,
         )
         # Text-only: GLM emits clean markdown (tables/equations) with no grounding
-        # markers — pass it straight through with no regions (DESIGN §8.2).
+        # markers — pass it straight through with no regions (DESIGN §8.2). The
+        # truncation flag is backend-generic (cap-instead-of-EOS, DESIGN §2.2/§8.6).
         return OcrPageResult(
-            page_number=image.page_number, markdown=raw.strip(), regions=[]
+            page_number=image.page_number,
+            markdown=raw.strip(),
+            regions=[],
+            truncated=inference_truncated(inf),
         )

@@ -93,36 +93,41 @@ MIN_TABLE_REGION_SPAN = 0.01
 def match_table_regions(
     blobs: list[str], regions: list[Region]
 ) -> list[Region | None]:
-    """Match each ``<table>`` blob to the grounded table region that contains it.
+    """Match each ``<table>`` blob to the grounded table region that anchors it.
 
-    Content-based (a candidate's ``text`` must contain the blob), label-gated
+    A table region's **anchor text** is its own text when present, or — the
+    shape confirmed on build 9587 (real capture:
+    ``tests/fixtures/deepseek_paper_table_p27_raw.txt``) — the immediately
+    following region's text: ``table[[bbox]]`` is an EMPTY block, exactly like
+    ``image``, and the following ``table_caption[[bbox]]`` block carries the
+    caption AND the ``<table>`` HTML. Matching is content-based (exact anchor
+    match preferred, then containment — so a blob that is a substring of some
+    other anchor can never steal that region from its true blob), label-gated
     (``TABLE_LABELS`` only — a ``text``-block bbox is not a table bbox), with
     document order as the tiebreak for duplicate blobs. Degenerate bboxes are
-    not candidates. ``None`` entries (hand-edited bundle markdown, an ungrounded
-    table, a stale region) fall back to the whole-page input path.
+    not candidates. ``None`` entries (hand-edited bundle markdown, an
+    ungrounded table, a stale region) fall back to the whole-page input path.
     """
-    candidates: list[Region] = []
-    for r in regions:
-        if r.label.lower() not in TABLE_LABELS or not r.text:
+    candidates: list[tuple[Region, str]] = []
+    for i, r in enumerate(regions):
+        if r.label.lower() not in TABLE_LABELS:
             continue
         x1, y1, x2, y2 = r.bbox_norm
         if x2 - x1 < MIN_TABLE_REGION_SPAN or y2 - y1 < MIN_TABLE_REGION_SPAN:
             continue
-        candidates.append(r)
+        anchor = r.text or (regions[i + 1].text if i + 1 < len(regions) else None)
+        if not anchor:
+            continue
+        candidates.append((r, anchor))
     used: set[int] = set()
     matched: list[Region | None] = []
     for blob in blobs:
         match = None
-        # Exact match first (DeepSeek's table-region text IS the blob), so a
-        # blob that happens to be a substring of some other region's text can
-        # never steal that region from its true blob; containment is the
-        # fallback for regions whose text carries extra content around the blob.
         for exact in (True, False):
-            for j, r in enumerate(candidates):
+            for j, (r, anchor) in enumerate(candidates):
                 if j in used:
                     continue
-                text = r.text or ""
-                if (blob == text) if exact else (blob in text):
+                if (blob == anchor) if exact else (blob in anchor):
                     match = r
                     used.add(j)
                     break

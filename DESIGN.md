@@ -12,7 +12,17 @@
 > `paper2llm`). It is written to be read entirely standalone — every concept,
 > dependency, and external quirk needed to build v1 is described here.
 >
-> **Last updated:** 2026-06-10 (§3/§9.7: **the table pass now sends the VLM a
+> **Last updated:** 2026-06-10 (§2.2/§8.5/§8.6/§16: **OCR loop/truncation
+> detection** — a page whose generation stops at the token cap instead of EOS
+> (`finish_reason != "stop"`, the repetition-loop signature) is now flagged
+> `truncated`: the best-effort parse is kept, the pipeline warns loudly, and
+> the page is cached **with the flag** and re-warned on every cache hit — NOT
+> left uncached: the OCR key pins every output-determining knob (incl. the
+> pinned `max_tokens` cap), so a recompute could only reproduce the same loop
+> (contrast the table pass, whose key deliberately excludes `ctx_size`, §8.6).
+> The bundle manifest records per-page `truncated` (additive, `bundle_schema`
+> stays 1). Loop-breaking retry deferred to `TODO.md`. Earlier same day —
+> §3/§9.7: **the table pass now sends the VLM a
 > cropped table image** — each `<table>` blob is content-matched to its
 > grounded `table[[bbox]]` region (a ≥9587 capability) and the crop is cut
 > from the verbatim page raster, instead of the whole page the VLM downscales
@@ -194,8 +204,15 @@ So **every** model `inscriber` uses (OCR and VLM) is configured as a
     wall-clock timeout + soft-failure** on a looping/truncated page (§5.3, §16).
     ⚠️ **f16 reduces but does not eliminate loops**: a real page looped at BF16
     + grounded prompt + DRY + temp 0 (a dense multi-underbrace equation array;
-    2026-06-10, `dev/notes/2026-06-10-equation-fidelity-findings.md`). The cap bounded it,
-    but detection of the truncated page is a known gap — tracked in `TODO.md`.
+    2026-06-10, `dev/notes/2026-06-10-equation-fidelity-findings.md`). The cap
+    bounded it, and the pipeline **detects the signature**: generation that
+    stops at the cap instead of EOS (`finish_reason != "stop"`) flags the page
+    `truncated` — best-effort parse kept, loud warning, cached **with the
+    flag** and re-warned on every cache hit (§8.6). Known limitation: a loop
+    that self-terminates below the cap yields `finish_reason: "stop"` and is
+    undetectable this way (text-side heuristics would false-positive on
+    legitimately repetitive content). Loop-breaking retry ideas are deferred
+    in `TODO.md`.
   - Drive OCR **deterministically**: `temperature: 0` + fixed seed (part of the
     cache key, §8.6).
   - **Chat template is path-dependent.** With **`llama-server`**, do **not** pass
@@ -245,6 +262,11 @@ So **every** model `inscriber` uses (OCR and VLM) is configured as a
 > `image` (the figure-class label; no text of its own), `image_caption`
 > (wrapped `<center>…</center>`, immediately follows its `image` block), and
 > `equation` for display equations. Math arrives as inline `\(…\)` LaTeX.
+> Tables mirror the figure pairing (confirmed 2026-06-10 on a real paper, all
+> 10 tables; fixture `tests/fixtures/deepseek_paper_table_p27_raw.txt`):
+> **`table` is an empty block** — like `image` — and the immediately following
+> **`table_caption`** block carries the caption line AND the `<table>` HTML
+> (the §9.7 matcher anchors on this shape).
 >
 > Coordinates are on a **0–999 per-axis grid relative to the original image**
 > (calibration box matched to Δ≈4–6 grid units on build 9587):
@@ -879,6 +901,12 @@ Notes:
 - `manifest.json` is **human-editable**: fix an OCR glitch in a page's `markdown`
   (keeping the `⟦INSCRIBER_FIG⟧` placeholders) once, then run `describe` with N
   different VLMs.
+- A page whose OCR generation was truncated (the repetition-loop signature,
+  §2.2/§8.6) carries `"truncated": true` (additive — old readers ignore it,
+  `bundle_schema` stays 1): it marks exactly the page whose `markdown` needs
+  the hand-edit above. `describe` does not re-warn — the manifest entry is
+  the record (and stays accurate about what OCR produced even after the
+  markdown is fixed).
 - **`bundle_schema` versioning:** `describe` accepts `bundle_schema <= SUPPORTED`
   and **refuses a higher value** with a clear error (never silently misparse).
   `inscriber_version` is informational and is **not** the gate (it churns every
@@ -932,6 +960,18 @@ render_long_edge_px, prompt, sampling_params)`. Each item matters:
   stored** — cropping is recomputed each run from `figure.crop_padding` (which is
   therefore _not_ in the OCR key); the VLM cache's `figure_crop_hash` (§9.6) is
   what protects correctness when crops change.
+- **Truncated pages are cached _flagged_, never silently served.** A page whose
+  generation stopped at the cap instead of EOS (`finish_reason != "stop"` — the
+  repetition-loop signature, §2.2) is still the best available output: it is
+  cached with `truncated: true` in the stored result, and **every cache hit
+  re-warns**. Rationale: the key above contains every output-determining knob
+  (model/mmproj/build, resolution + render px, prompt, sampling incl. the
+  pinned `max_tokens` cap), so a recompute could only reproduce the same loop —
+  not caching would buy nothing but re-paying the loop's wall-clock on every
+  run. Contrast the VLM passes (§9.6/§9.7): their keys deliberately exclude
+  `ctx_size`, so a truncated table IS recoverable under the same key with a
+  bigger `--ctx` — which is why the table pass does _not_ cache truncation.
+  Hard failures (errors) are still never cached.
 - **Location:** `platformdirs.user_cache_dir("inscriber")/ocr/`. **Written
   per-page as each page completes** (not batched at the end), so an interrupted
   `run`/`ocr` resumes from the last completed page. The VLM cache (§9.6) is
@@ -1098,6 +1138,13 @@ identical string into the backend call (§9.2), so key and request cannot drift.
 Lets you re-run the document (e.g. to re-split or re-fetch BibTeX) without
 re-describing figures.
 
+Truncation policy differs per VLM operation, deliberately: a truncated
+**figure description** is still useful prose, so it IS cached — visibly marked
+with a trailing `[...]` (the best-effort-but-flagged stance of a truncated OCR
+page, §8.6) — while a truncated **table** (§9.7) or **probe** (§12) output is
+structurally unusable and is never cached (and stays recoverable under the
+same key with a bigger `--ctx`, since `ctx_size` is not key material).
+
 ### 9.7 Table restructuring (`postprocess/tables.py`) — tables before figures
 
 > Validated post-v1 in `dev/notes/2026-06-10-table-reconstruction-findings.md`; that note holds
@@ -1122,12 +1169,14 @@ verbatim page raster (`crop_region_bytes`, the §8.4 box math). Rationale: the
 VLM downscales the whole page to ~896 px, which is exactly where the dense
 multi-header failures (5 of 10 PriorGuide tables) and the fusion-segmentation
 errors live; a crop arrives near native resolution. Matching
-(`match_table_regions`) is content-based (the region's text must contain the
-blob) and gated to `TABLE_LABELS` with document order as tiebreak; an
-unmatched blob (pre-grounding cache/bundle, hand-edited bundle markdown, an
-ungrounded table, degenerate bbox) **falls back to the validated whole-page
-path**, announced with an INFO line — the cropped path is strictly an upgrade,
-never a new failure mode.
+(`match_table_regions`) is content-based against the region's **anchor text**
+— its own text, or (the real 9587 shape, §2.2: `table` is an empty block) the
+immediately following `table_caption` block's text, which carries the caption
+and the `<table>` HTML — exact match preferred, containment fallback, gated to
+`TABLE_LABELS`, document order as tiebreak. An unmatched blob (pre-grounding
+cache/bundle, hand-edited bundle markdown, an ungrounded table, degenerate
+bbox) **falls back to the validated whole-page path**, announced with an INFO
+line — the cropped path is strictly an upgrade, never a new failure mode.
 
 Two prompt variants, assembled by `format_table_prompt()` and sent as a single
 user message, image first:
@@ -1818,7 +1867,8 @@ These are hard requirements, not nice-to-haves:
   — log it, insert a `[figure description unavailable]` placeholder, continue.
   Same for BibTeX failures — in `auto` mode the source chain degrades source by
   source down to a logged skip (§12) — and for an OCR page that loops/truncates
-  (§2.2): best-effort parse what came back, log, move on.
+  (§2.2): best-effort parse what came back, flag it `truncated`, warn loudly
+  (on compute and on every later cache hit, §8.6), move on.
 - **stdout vs stderr:** progress/logs go to **stderr**; on completion print the
   **list of written file paths to stdout** (one per line) so the run is
   machine-parseable even under `-q`.

@@ -41,11 +41,16 @@ def region_from_dict(d: dict) -> Region:
 
 
 def ocr_page_result_to_dict(r: OcrPageResult) -> dict:
-    return {
+    d = {
         "page_number": r.page_number,
         "markdown": r.markdown,
         "regions": [region_to_dict(x) for x in r.regions],
     }
+    # Additive: written only when set, so clean pages keep the original shape
+    # (old cache entries / bundles read as not-truncated, DESIGN §8.5/§8.6).
+    if r.truncated:
+        d["truncated"] = True
+    return d
 
 
 def ocr_page_result_from_dict(d: dict) -> OcrPageResult:
@@ -53,4 +58,5 @@ def ocr_page_result_from_dict(d: dict) -> OcrPageResult:
         page_number=d["page_number"],
         markdown=d["markdown"],
         regions=[region_from_dict(x) for x in d.get("regions", [])],
+        truncated=bool(d.get("truncated", False)),
     )

@@ -35,7 +35,7 @@ from inscriber.models import (
     ResolutionMode,
     fig_placeholder,
 )
-from inscriber.ocr.base import Inferencer, OcrBackend
+from inscriber.ocr.base import Inferencer, OcrBackend, inference_truncated
 
 logger = get_logger()
 
@@ -157,7 +157,13 @@ class DeepSeekOcrBackend(OcrBackend):
             max_tokens=self.max_tokens(),
             timeout_s=self.request_timeout,
         )
-        return self.parse(raw, image)
+        result = self.parse(raw, image)
+        # Generation that stopped at the cap instead of EOS is the repetition-loop
+        # signature (DESIGN §2.2): the page tail is missing. Keep the best-effort
+        # parse but flag it — the pipeline warns and caches it as explicitly
+        # truncated (DESIGN §8.6).
+        result.truncated = inference_truncated(inf)
+        return result
 
     def parse(self, raw: str, image: PageImage) -> OcrPageResult:
         """Parse grounding output → clean markdown (figure placeholders) + regions.

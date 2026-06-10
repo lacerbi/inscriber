@@ -211,13 +211,40 @@ def _check_server_build(backend, server_identity: str) -> None:
         )
 
 
+def _warn_truncated_page(
+    page_number: int, *, cached: bool = False, completion_tokens: int | None = None
+) -> None:
+    """Loud warning for a truncated OCR page (DESIGN §2.2/§8.6).
+
+    Fires when the page is computed AND on every later cache hit — the result is
+    cached marked ``truncated`` (its key contains every output-determining knob,
+    so recomputing would only reproduce the same loop), but it must never be
+    served silently.
+    """
+    if cached:
+        detail = "served from cache; the page was truncated when OCR'd"
+    else:
+        tokens = f" after {completion_tokens} tokens" if completion_tokens else ""
+        detail = f"generation stopped at the token cap{tokens}"
+    logger.warning(
+        "OCR page %d: %s — likely a repetition loop; page text after the loop "
+        "point is missing. --refresh will reproduce the same loop (OCR is "
+        "deterministic); try a different --ocr-resolution, or fix the page by "
+        "hand via the two-step flow (`inscriber ocr`, then edit the page's "
+        "markdown in the bundle manifest).",
+        page_number, detail,
+    )
+
+
 def run_ocr_pass(
     cfg: RunConfig, resolved: ResolvedInput, work_dir: str | Path
 ) -> tuple[list[PageImage], list[OcrPageResult]]:
     """OCR every selected page → ``(pages, results)`` (DESIGN §8, §8.6).
 
     Consults the per-page cache first; only launches the OCR server when at least
-    one page is uncached. Resilient: a page that errors becomes an empty page.
+    one page is uncached. Resilient: a page that errors becomes an empty page; a
+    page that truncates (repetition loop, §2.2) is kept best-effort, flagged, and
+    loudly warned about — on compute and on every cache hit.
     """
     backend = _build_ocr_backend(cfg)
     mode = ResolutionMode(cfg.ocr.resolution)
@@ -254,6 +281,8 @@ def run_ocr_pass(
         cached = cache.get(key)
         if cached is not None:
             logger.info("OCR page %d: cache hit", pg.page_number)
+            if cached.truncated:
+                _warn_truncated_page(pg.page_number, cached=True)
             results_by_page[pg.page_number] = cached
         else:
             todo.append(pg)
@@ -286,9 +315,16 @@ def run_ocr_pass(
                 logger.info("OCR page %d/%d (doc page %d)…", i, len(todo), pg.page_number)
                 try:
                     res = backend.ocr_page(inf, pg, mode)
-                    # Only cache SUCCESSFUL pages — a transient failure must not
-                    # poison the cache with an empty page (recoverable only via
-                    # --refresh otherwise).
+                    if res.truncated:
+                        _warn_truncated_page(
+                            pg.page_number,
+                            completion_tokens=getattr(inf, "last_completion_tokens", None),
+                        )
+                    # Errors are never cached — a transient failure must not poison
+                    # the cache with an empty page (recoverable only via --refresh
+                    # otherwise). A TRUNCATED page IS cached, flagged: its key holds
+                    # every output-determining knob, so a recompute would reproduce
+                    # the same loop; the flag re-warns on every hit (§8.6).
                     cache.put(keys[pg.page_number], res, raw_output=getattr(inf, "last_raw", ""))
                 except Exception as e:  # noqa: BLE001 - resilience (DESIGN §16)
                     logger.warning(
@@ -869,7 +905,10 @@ def run_ocr(cfg: RunConfig) -> list[str]:
         model_id, mmproj_id, server_id = _ocr_identities(cfg, cache)
         working = _crop_pages(cfg, backend, resolved.pdf_bytes, pages, results, figures_dir)
         page_results = [
-            OcrPageResult(page_number=p.page_number, markdown=p.markdown, regions=r.regions)
+            OcrPageResult(
+                page_number=p.page_number, markdown=p.markdown, regions=r.regions,
+                truncated=r.truncated,  # manifest marks the page to hand-edit (§8.5)
+            )
             for p, r in zip(working, results, strict=True)
         ]
         page_figures = {p.page_number: p.figures for p in working}
