@@ -87,7 +87,8 @@ context_chars = 2000
 
 [table]
 # Restructure DeepSeek-OCR's degenerate <table> HTML into clean Markdown pipe
-# tables using the VLM and the page image. Independent of figure settings.
+# tables using the VLM and a cropped image of the table (the full page image
+# when no table box was detected). Independent of figure settings.
 # Generation is bounded by llama.ctx_size (Gemma 4 thinks before answering;
 # complex tables need ~6-8k tokens of thinking + answer).
 refine = true

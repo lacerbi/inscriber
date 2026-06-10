@@ -1,8 +1,9 @@
 """Gemma 4 VLM backend (DESIGN §2.3, §9).
 
 Used as a vision→text describer (figure crops → prose, DESIGN §9) and as the
-table restructurer (whole page image + DeepSeek ``<table>`` blob → Markdown pipe
-table, dev/notes/2026-06-10-table-reconstruction-findings.md). Prompts are assembled once by
+table restructurer (table crop — or whole page on the fallback path — plus the
+DeepSeek ``<table>`` blob → Markdown pipe table, DESIGN §9.7,
+dev/notes/2026-06-10-table-reconstruction-findings.md). Prompts are assembled once by
 the orchestrator via ``build_prompt``/``build_table_prompt`` — the same strings
 are the cache-key material (DESIGN §9.6) — and passed into
 ``describe``/``restructure_table``.
@@ -57,10 +58,20 @@ class GemmaVlmBackend(VlmBackend):
         return format_image_prompt(context_text)
 
     def build_table_prompt(
-        self, table_blob: str, page_text: str, *, table_index: int, table_count: int
+        self,
+        table_blob: str,
+        page_text: str,
+        *,
+        table_index: int,
+        table_count: int,
+        cropped: bool = False,
     ) -> str:
         return format_table_prompt(
-            table_blob, page_text, table_index=table_index, table_count=table_count
+            table_blob,
+            page_text,
+            table_index=table_index,
+            table_count=table_count,
+            cropped=cropped,
         )
 
     def build_bibtex_probe_prompt(self, page_text: str) -> str:
@@ -88,11 +99,11 @@ class GemmaVlmBackend(VlmBackend):
             return desc.rstrip() + f" {TRUNCATED_MARKER}"
         return desc
 
-    def restructure_table(self, page_png: bytes, prompt: str) -> str | None:
+    def restructure_table(self, image_png: bytes, prompt: str) -> str | None:
         if self.client is None:
             raise InferenceError("GemmaVlmBackend has no chat client (no VLM endpoint)")
         raw = self.client.chat_image(
-            image_png=page_png,
+            image_png=image_png,
             prompt=prompt,
             sampling=self.sampling(),
             timeout_s=self.request_timeout,

@@ -23,6 +23,49 @@ FIGURES_DIRNAME = "figures"
 _MIN_PX = 2  # skip near-zero-area crops
 
 
+def padded_pixel_box(
+    bbox_norm: tuple[float, float, float, float],
+    width: int,
+    height: int,
+    padding: float,
+) -> tuple[int, int, int, int] | None:
+    """``bbox_norm`` + a ``padding`` margin → a clamped pixel box, or ``None``
+    when the box is near-zero-area (DESIGN §8.4). Shared by the figure and
+    table crop paths so their box math cannot drift."""
+    x1, y1, x2, y2 = bbox_norm
+    bx1 = max(0.0, x1 - padding)
+    by1 = max(0.0, y1 - padding)
+    bx2 = min(1.0, x2 + padding)
+    by2 = min(1.0, y2 + padding)
+    px1, py1 = int(round(bx1 * width)), int(round(by1 * height))
+    px2, py2 = int(round(bx2 * width)), int(round(by2 * height))
+    if px2 - px1 < _MIN_PX or py2 - py1 < _MIN_PX:
+        return None
+    return (px1, py1, px2, py2)
+
+
+def crop_region_bytes(
+    png_bytes: bytes,
+    bbox_norm: tuple[float, float, float, float],
+    *,
+    padding: float,
+) -> bytes | None:
+    """Crop one region from a page raster, in memory → PNG bytes (DESIGN §9.7).
+
+    Used by the table pass: crops are ephemeral per-call inputs (never bundle
+    artifacts), and the cache key is (raster hash + bbox + padding) — the
+    deterministic inputs of this function — so the encoded bytes themselves are
+    never key material. ``None`` means the box was near-zero-area.
+    """
+    img = Image.open(io.BytesIO(png_bytes))
+    box = padded_pixel_box(bbox_norm, img.width, img.height, padding)
+    if box is None:
+        return None
+    buf = io.BytesIO()
+    img.crop(box).save(buf, format="PNG")
+    return buf.getvalue()
+
+
 def crop_figures(
     page: PageImage,
     regions: list[Region],
@@ -46,20 +89,13 @@ def crop_figures(
             continue
         fig_index += 1
         fig_id = f"fig_p{page.page_number}_{fig_index}"
-        x1, y1, x2, y2 = region.bbox_norm
         # crop_padding is a fraction of page dims (DESIGN §8.4); clamp to [0,1].
-        bx1 = max(0.0, x1 - crop_padding)
-        by1 = max(0.0, y1 - crop_padding)
-        bx2 = min(1.0, x2 + crop_padding)
-        by2 = min(1.0, y2 + crop_padding)
-        px1, py1 = int(round(bx1 * width)), int(round(by1 * height))
-        px2, py2 = int(round(bx2 * width)), int(round(by2 * height))
-        if px2 - px1 < _MIN_PX or py2 - py1 < _MIN_PX:
+        box = padded_pixel_box(region.bbox_norm, width, height, crop_padding)
+        if box is None:
             logger.warning("skipping near-zero-area figure %s (bbox=%s)", fig_id, region.bbox_norm)
             continue
         figures_dir.mkdir(parents=True, exist_ok=True)
-        crop = img.crop((px1, py1, px2, py2))
-        crop.save(figures_dir / f"{fig_id}.png")
+        img.crop(box).save(figures_dir / f"{fig_id}.png")
         figures.append(
             Figure(
                 id=fig_id,

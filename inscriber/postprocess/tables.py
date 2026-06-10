@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import re
 
+from inscriber.models import TABLE_LABELS, Region
 from inscriber.postprocess.inject import PLACEHOLDER_RE
 
 # A well-formed DeepSeek table blob. Non-greedy so adjacent tables stay separate;
@@ -49,6 +50,86 @@ Page text (context):
 
 Raw OCR of the table:
 {table_blob}"""
+
+# The cropped-input variant (DESIGN §9.7): same prompt with the count-aware
+# locator replaced by a crop preamble — a cropped image needs no on-page
+# disambiguation — and "the page image" reworded accordingly. Everything from
+# "The OCR is generally accurate" onward is byte-identical to the validated
+# template (pinned by a test). ⚠️ Pending real-hardware validation (§9.7
+# pinned-prompt rule); the opening line is also the pinned test-mock
+# discriminator — keep it verbatim in both templates.
+TABLE_PROMPT_TEMPLATE_CROPPED = """You are reconstructing ONE table from a scientific paper as clean GitHub-flavored Markdown.
+
+The image is a cropped view of the table to reconstruct, taken from the page it appears on; it may include a sliver of surrounding page content at the edges.
+
+You are given the cropped table image, the rest of the page's text as context, and a raw OCR transcription of that table. The OCR is generally accurate but NOT perfect: it may have MERGED adjacent labels or values that run together, and the table may be IRREGULAR (column groups with different numbers of sub-columns).
+
+Guidelines:
+- Use the IMAGE to determine the true structure: the real columns and rows, and any grouped/multi-level headers (represent column groups with a second header row).
+- Use the PAGE TEXT to resolve ambiguous or run-together labels: the caption and surrounding prose usually spell out the correct column/row names and what the rows and columns mean. Prefer those spellings when fixing merged labels.
+- When you are CERTAIN, fix clear OCR mistakes: split labels or values the OCR ran together and place them in the correct cells. Do not invent unsupported data.
+- Keep irregular groups as they are; never drop or merge values to look uniform.
+- Preserve each value's exact formatting (e.g. "2.57 (0.020)").
+- Output ONLY the markdown table. No commentary.
+
+Page text (context):
+<page_text>
+{page_text}
+</page_text>
+
+Raw OCR of the table:
+{table_blob}"""
+
+# Margin around a matched table region, as a fraction of page dims — covers the
+# observed bbox jitter on build 9587 (Δ≈4–6 grid units ≈ 0.5%). Cache-key
+# material (make_table_key crop_padding): changing it recomputes the crops.
+TABLE_CROP_PADDING = 0.02
+
+# A matched region narrower than this (per axis, [0,1] frame) cannot hold a
+# readable table — treat it as unmatched and fall back to the whole-page path.
+MIN_TABLE_REGION_SPAN = 0.01
+
+
+def match_table_regions(
+    blobs: list[str], regions: list[Region]
+) -> list[Region | None]:
+    """Match each ``<table>`` blob to the grounded table region that contains it.
+
+    Content-based (a candidate's ``text`` must contain the blob), label-gated
+    (``TABLE_LABELS`` only — a ``text``-block bbox is not a table bbox), with
+    document order as the tiebreak for duplicate blobs. Degenerate bboxes are
+    not candidates. ``None`` entries (hand-edited bundle markdown, an ungrounded
+    table, a stale region) fall back to the whole-page input path.
+    """
+    candidates: list[Region] = []
+    for r in regions:
+        if r.label.lower() not in TABLE_LABELS or not r.text:
+            continue
+        x1, y1, x2, y2 = r.bbox_norm
+        if x2 - x1 < MIN_TABLE_REGION_SPAN or y2 - y1 < MIN_TABLE_REGION_SPAN:
+            continue
+        candidates.append(r)
+    used: set[int] = set()
+    matched: list[Region | None] = []
+    for blob in blobs:
+        match = None
+        # Exact match first (DeepSeek's table-region text IS the blob), so a
+        # blob that happens to be a substring of some other region's text can
+        # never steal that region from its true blob; containment is the
+        # fallback for regions whose text carries extra content around the blob.
+        for exact in (True, False):
+            for j, r in enumerate(candidates):
+                if j in used:
+                    continue
+                text = r.text or ""
+                if (blob == text) if exact else (blob in text):
+                    match = r
+                    used.add(j)
+                    break
+            if match is not None:
+                break
+        matched.append(match)
+    return matched
 
 
 def find_table_blobs(markdown: str) -> list[tuple[int, int, str]]:
@@ -102,9 +183,22 @@ def locator_text(table_index: int, table_count: int) -> str:
 
 
 def format_table_prompt(
-    table_blob: str, page_text: str, *, table_index: int, table_count: int
+    table_blob: str,
+    page_text: str,
+    *,
+    table_index: int,
+    table_count: int,
+    cropped: bool = False,
 ) -> str:
-    """Assemble the full restructuring prompt — also the table cache key material."""
+    """Assemble the full restructuring prompt — also the table cache key material.
+
+    ``cropped`` selects the cropped-input variant (the image is the table crop,
+    so the locator is replaced by the crop preamble; index/count are unused).
+    """
+    if cropped:
+        return TABLE_PROMPT_TEMPLATE_CROPPED.format(
+            page_text=page_text, table_blob=table_blob
+        )
     return TABLE_PROMPT_TEMPLATE.format(
         locator=locator_text(table_index, table_count),
         page_text=page_text,

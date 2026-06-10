@@ -21,23 +21,26 @@ Legend: `[ ]` todo · `[!]` blocked.
 
 ## Table-restructuring pass (DESIGN §9.7)
 
-- [ ] **Cropped table input** for crisper VLM reading — **UNBLOCKED
-      2026-06-10 and the top table-quality item.** The blocker ("DeepSeek does
-      not ground tables with boxes",
-      `dev/notes/2026-06-10-table-reconstruction-findings.md` §Notes) was a
-      build-9028 fact: **on 9587 DeepSeek emits `table[[bbox]]` +
-      `table_caption[[bbox]]` regions, at 1280 and 2048 alike**
-      (`dev/notes/2026-06-10-e2e-quality-findings.md` §Render-size experiment).
-      Sketch: parser keeps table regions (additive — unknown labels already
-      pass through); crop the table bbox (+padding) from the page raster —
-      now 2048px by default — and send the crop to the VLM instead of the
-      whole ~896px-downscaled page; mirrors the figure-crop path; cache keys
-      on the crop hash; bundle already carries table-page rasters. Motivation
-      is quantified: 5 of 10 tables on a real paper carried structure damage,
-      and the digit-fusion/segmentation errors (`159.99346.6…` splits,
-      `1010` cell merges) are NOT resolution-sensitive — a crisp crop the
-      VLM can actually read is the remaining lever. Validate prompt shape on
-      real hardware (§9.7 pinned-prompt rule).
+- [ ] **Cropped table input — validate on real hardware** (the prompt-pin
+      gate). The mechanics shipped 2026-06-10 (DESIGN §9.7): blobs are
+      content-matched to grounded `table[[bbox]]` regions, the crop (+0.02
+      padding) is cut from the verbatim page raster and sent to the VLM with a
+      new **cropped prompt variant** (locator → crop preamble; shared tail
+      pinned by test); unmatched blobs fall back to the validated whole-page
+      path (INFO line); cache key = raster hash + bbox + padding (conditional —
+      whole-page keys preserved). Per the §9.7 pinned-prompt rule the cropped
+      variant is **not validated yet** — run `dev/scripts/table_crop_check.py`
+      against the PriorGuide table pages and:
+      (i) **inspect every crop for completeness** — a clipped crop contradicts
+      "never drop values" and is the dangerous case;
+      (ii) diff page-input vs crop-input outputs cell-by-cell against the PDF
+      (baseline: 2 clean / 3 value-perfect-wrong-shape / 5 damaged,
+      `dev/notes/2026-06-10-e2e-quality-findings.md` §Tables — the fusion
+      splits `159.99346.6…` and `1010` merges are the target);
+      (iii) capture a real table-page raw output as a committed parser fixture
+      (no current fixture contains `table[[bbox]]`);
+      (iv) record a dated note and mark the cropped prompt validated in DESIGN
+      §9.7 — or revert to whole-page input if it regresses.
 - [ ] **Guard against silent structure damage** in restructured tables —
       the worst observed failure is a syntactically clean table that silently
       dropped an entire column group (Table 1 in

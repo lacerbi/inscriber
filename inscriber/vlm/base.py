@@ -30,10 +30,17 @@ class VlmBackend(ABC):
         raise NotImplementedError
 
     def build_table_prompt(
-        self, table_blob: str, page_text: str, *, table_index: int, table_count: int
+        self,
+        table_blob: str,
+        page_text: str,
+        *,
+        table_index: int,
+        table_count: int,
+        cropped: bool = False,
     ) -> str:
         """The fully-assembled table-restructuring prompt — also the table cache
-        key material."""
+        key material. ``cropped`` selects the cropped-table-image variant
+        (DESIGN §9.7); ``table_index``/``table_count`` are unused there."""
         raise NotImplementedError
 
     def build_bibtex_probe_prompt(self, page_text: str) -> str:
@@ -46,9 +53,10 @@ class VlmBackend(ABC):
         """One figure description (crop + a :meth:`build_prompt` prompt).
         Returns the cleaned description text (already extracted from tags)."""
 
-    def restructure_table(self, page_png: bytes, prompt: str) -> str | None:
-        """One table restructure (whole-page image + a :meth:`build_table_prompt`
-        prompt).
+    def restructure_table(self, image_png: bytes, prompt: str) -> str | None:
+        """One table restructure (a :meth:`build_table_prompt` prompt plus its
+        matching image — the table crop, or the whole page on the fallback
+        path; DESIGN §9.7).
 
         Returns the raw model response, or ``None`` when the response was
         truncated — a truncated table silently loses rows, while the original

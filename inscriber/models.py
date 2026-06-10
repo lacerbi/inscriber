@@ -84,6 +84,11 @@ FIGURE_LABELS = frozenset(
     {"figure", "image", "picture", "chart", "diagram", "plot"}
 )
 
+# Table-class labels: grounded regions the table pass may crop to (DESIGN §9.7).
+# DeepSeek-OCR emits ``table`` on llama.cpp builds >= 9587
+# (dev/notes/2026-06-10-e2e-quality-findings.md §Render-size experiment).
+TABLE_LABELS = frozenset({"table"})
+
 # The placeholder token spliced where a figure was (DESIGN §8.3). The id format
 # is ``fig_p{page}_{i}`` (1-indexed page, 1-indexed figure-on-page).
 FIG_PLACEHOLDER_PREFIX = "⟦INSCRIBER_FIG:"

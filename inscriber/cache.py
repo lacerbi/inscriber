@@ -224,29 +224,40 @@ def make_table_key(
     full_assembled_prompt: str,
     sampling: dict,
     chat_template_kwargs: dict | None = None,
+    crop_bbox: tuple[float, float, float, float] | None = None,
+    crop_padding: float | None = None,
 ) -> str:
     """Cache key for one table restructure.
 
-    Same scheme as :func:`make_vlm_key` but content-addressed on the **whole page
-    image** (the table pass sends the full page, not a crop) and the assembled
-    table prompt (locator + page text + OCR blob included). The ``kind`` field
-    keeps table entries from ever colliding with figure-description entries in
-    the shared store.
+    Same scheme as :func:`make_vlm_key` but content-addressed on the
+    **verbatim page raster** plus the assembled table prompt (locator/crop
+    preamble + page text + OCR blob included). The ``kind`` field keeps table
+    entries from ever colliding with figure-description entries in the shared
+    store.
+
+    On the cropped-input path (DESIGN §9.7), ``crop_bbox`` + ``crop_padding``
+    join the key: the crop's pixels are fully determined by (raster, bbox,
+    padding), so keying on those — rather than on a hash of the re-encoded
+    crop bytes — is immune to PNG-encoder churn and trivially shared between
+    ``run`` and ``describe`` (both crop from the same verbatim raster). The
+    fields are added **conditionally** so whole-page-path keys stay
+    byte-identical to the pre-crop scheme (warm caches preserved).
     """
-    payload = json.dumps(
-        {
-            "kind": "table-restructure",
-            "page_image": page_image_hash,
-            "backend": vlm_backend_name,
-            "model": vlm_model_identity,
-            "mmproj": vlm_mmproj_identity,
-            "server": server_identity,
-            "prompt": full_assembled_prompt,
-            "sampling": sampling,
-            "chat_template_kwargs": chat_template_kwargs,
-        },
-        sort_keys=True,
-    )
+    body = {
+        "kind": "table-restructure",
+        "page_image": page_image_hash,
+        "backend": vlm_backend_name,
+        "model": vlm_model_identity,
+        "mmproj": vlm_mmproj_identity,
+        "server": server_identity,
+        "prompt": full_assembled_prompt,
+        "sampling": sampling,
+        "chat_template_kwargs": chat_template_kwargs,
+    }
+    if crop_bbox is not None:
+        body["crop_bbox"] = list(crop_bbox)
+        body["crop_padding"] = crop_padding
+    payload = json.dumps(body, sort_keys=True)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 

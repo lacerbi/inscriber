@@ -19,8 +19,9 @@ Given a PDF (local file, or a URL from a supported paper repository),
   figure replaced by a generated textual description (or kept alongside it with
   `--figure-mode describe-and-keep`).
 - **Clean tables.** DeepSeek-OCR emits tables as degenerate HTML; by default the
-  VLM restructures each one into a Markdown pipe table, using the page image for
-  the true layout while preserving the OCR values. On any failure the raw OCR
+  VLM restructures each one into a Markdown pipe table, reading the true layout
+  from a cropped image of the table (or the full page image when no table box
+  was detected) while preserving the OCR values. On any failure the raw OCR
   table is kept. Disable with `--no-table-refine`.
 - **Split files** — the document divided into `main`, `appendix`, and
   `backmatter` parts (disable with `--no-split`).

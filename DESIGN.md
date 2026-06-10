@@ -12,7 +12,17 @@
 > `paper2llm`). It is written to be read entirely standalone — every concept,
 > dependency, and external quirk needed to build v1 is described here.
 >
-> **Last updated:** 2026-06-10 (§2.2/§7/§13/§19: **`gundam` now renders 2048 px
+> **Last updated:** 2026-06-10 (§3/§9.7: **the table pass now sends the VLM a
+> cropped table image** — each `<table>` blob is content-matched to its
+> grounded `table[[bbox]]` region (a ≥9587 capability) and the crop is cut
+> from the verbatim page raster, instead of the whole page the VLM downscales
+> to ~896 px; unmatched blobs fall back to the validated whole-page path with
+> an INFO line. New cropped prompt variant (shared tail pinned by test;
+> ⚠️ awaiting real-hardware validation — harness:
+> `dev/scripts/table_crop_check.py`, checklist: `TODO.md`) and a crop-aware
+> cache key — (raster hash + bbox + padding), added conditionally so
+> whole-page keys and warm caches are preserved. Earlier same day —
+> §2.2/§7/§13/§19: **`gundam` now renders 2048 px
 > and is the DEFAULT resolution** — the saturated ≥1664px encoding eliminates
 > the systematic small-subscript misreads at ~20% wall-clock cost, measured on
 > real probe pages (`dev/notes/2026-06-10-e2e-quality-findings.md`
@@ -326,7 +336,7 @@ abstraction (§8) is built so adding them later is purely additive.
 │  3. OCR pass           (each page PNG → markdown + figure bboxes) [§8]       │
 │        └─ via OcrBackend (DeepSeekOcrBackend) over a managed llama-server    │
 │  4. Figure crop        (bboxes → cropped figure PNGs)        [§8.4]          │
-│  5. VLM pass: tables   (each <table> blob + page image → pipe table) [§9.7]  │
+│  5. VLM pass: tables   (each <table> blob + table crop → pipe table) [§9.7]  │
 │  6. VLM pass: figures  (each figure crop + context → <img_desc>) [§9]        │
 │        └─ both via VlmBackend (GemmaVlmBackend) over ONE managed llama-server│
 │  7. Assemble + clean   (stitch pages, strip headers, inject descriptions)[§10]│
@@ -805,8 +815,8 @@ OUT/paper.inscriber-ocr/
 Pages whose markdown contains a restructurable `<table>` blob carry a per-page
 `raster_path` (e.g. `"pages/page_0003.png"`) — the **verbatim** rendered page
 PNG, so `describe` can run the VLM table-restructuring pass (§9.7) with no PDF
-present, and `run`/`describe` share table cache keys (the key hashes the image
-bytes). The field is additive: old readers ignore it (`bundle_schema` stays 1),
+present, and `run`/`describe` share table cache keys (the key hashes the
+verbatim raster bytes — plus the crop bbox/padding on the cropped path, §9.7). The field is additive: old readers ignore it (`bundle_schema` stays 1),
 and a bundle without it simply skips table refinement with a warning.
 
 `manifest.json`:
@@ -1100,15 +1110,40 @@ with most cell boundaries missing, so adjacent cells concatenate
 gone, and it is not post-fixable from the text alone.
 
 **Fix.** For each `<table>` blob, ask the VLM to **restructure** it: the blob
-supplies the values, the **whole page image** supplies the layout, and the rest
-of the page's text supplies correct spellings for merged labels. Low-risk
+supplies the values, the **image** supplies the layout, and the rest of the
+page's text supplies correct spellings for merged labels. Low-risk
 *structuring*, not re-OCR — the model copies the blob's values (even its typos).
-The prompt is the validated one from the findings note, verbatim (count-aware
-locator + correct-when-certain + page-text context), assembled by
-`format_table_prompt()` and sent as a single user message, image first.
-⚠️ **Treat the prompt text and message shape as pinned**: every ingredient was
+
+**The image is the cropped table by default** (added 2026-06-10): each blob is
+content-matched to its grounded `table[[bbox]]` region — a build ≥9587
+capability (`dev/notes/2026-06-10-e2e-quality-findings.md` §Render-size
+experiment) — and the crop (+`TABLE_CROP_PADDING` 0.02) is cut from the
+verbatim page raster (`crop_region_bytes`, the §8.4 box math). Rationale: the
+VLM downscales the whole page to ~896 px, which is exactly where the dense
+multi-header failures (5 of 10 PriorGuide tables) and the fusion-segmentation
+errors live; a crop arrives near native resolution. Matching
+(`match_table_regions`) is content-based (the region's text must contain the
+blob) and gated to `TABLE_LABELS` with document order as tiebreak; an
+unmatched blob (pre-grounding cache/bundle, hand-edited bundle markdown, an
+ungrounded table, degenerate bbox) **falls back to the validated whole-page
+path**, announced with an INFO line — the cropped path is strictly an upgrade,
+never a new failure mode.
+
+Two prompt variants, assembled by `format_table_prompt()` and sent as a single
+user message, image first:
+
+- **Whole-page (fallback)** — the validated prompt from the findings note,
+  verbatim (count-aware locator + correct-when-certain + page-text context).
+- **Cropped** — same prompt with the locator replaced by a crop preamble (a
+  cropped image needs no on-page disambiguation) and "the page image" reworded;
+  everything from the OCR caveat onward is byte-identical (pinned by a test).
+  ⚠️ **Pending real-hardware validation** — `dev/scripts/table_crop_check.py`
+  is the harness, `TODO.md` has the checklist (crop completeness must be
+  inspected: a clipped crop contradicts "never drop values").
+
+⚠️ **Treat the prompt texts and message shape as pinned**: every ingredient was
 added after a simpler version failed (history in the findings note) — do not
-reword or restructure it without re-validating on real hardware.
+reword or restructure them without re-validating on real hardware.
 
 Mechanics, in pipeline order (step 5, **before** figure description so figure
 context already sees clean tables):
@@ -1134,7 +1169,14 @@ context already sees clean tables):
 - **Caching** — per table, same store as §9.6, keyed on
   `(page_image_hash, backend, model/mmproj/server-build identities, full
   assembled prompt, sampling, chat_template_kwargs)` plus a `kind`
-  discriminator.
+  discriminator. On the cropped path the key **adds `(crop_bbox,
+  crop_padding)`** — the crop's pixels are fully determined by (raster, bbox,
+  padding), so keying on those instead of re-encoded crop bytes is immune to
+  PNG-encoder churn and trivially shared between `run` and `describe` (both
+  crop from the same verbatim raster; a cache hit needs no pixel work). The
+  fields are added **conditionally**, so whole-page-path keys are
+  byte-identical to the pre-crop scheme (warm caches preserved; pinned by a
+  test).
 - **Two-step** — `ocr` saves the verbatim page raster for table pages
   (`raster_path`, §8.5); `describe` reads it. Bundles without rasters skip with
   a warning.
@@ -1147,8 +1189,8 @@ context already sees clean tables):
   of the ~2–4k prompt). Gemma 4's thinking is activated explicitly per request
   via `chat_template_kwargs: {"enable_thinking": true}` (§2.3).
 
-**Open refinements** (deliberately not in this pass — a cropped-table input
-path and a system/user prompt split) are tracked in `TODO.md`.
+**Open refinements** (deliberately not in this pass — a system/user prompt
+split; plus the cropped-prompt validation gate above) are tracked in `TODO.md`.
 
 ---
 
@@ -1803,10 +1845,13 @@ the inference layer at the **chat-client boundary**.
   §8.5); a hand-edited page markdown survives; a `bundle_schema` higher than
   supported is rejected (§8.5).
 - **`test_tables.py`** — the table-restructuring pass (§9.7): blob detection /
-  guards / sanitation / splicing units, thinking-kwarg + `finish_reason`
-  truncation, cache-key disjointness, and mocked `run` + `ocr`→`describe`
-  integration (verbatim bundle rasters, old-bundle and no-VLM degradation,
-  multi-table locators, concurrent mode).
+  guards / sanitation / splicing units, blob↔table-region matching + in-memory
+  cropping, the cropped/whole-page prompt variants (shared-tail pin), thinking-
+  kwarg + `finish_reason` truncation, cache-key disjointness (incl. the
+  conditional crop fields + the pinned legacy whole-page payload), and mocked
+  `run` + `ocr`→`describe` integration (verbatim bundle rasters → shared
+  cropped-path keys, old-bundle and no-VLM degradation, crop-vs-page image
+  assertions, whole-page fallback with multi-table locators, concurrent mode).
 - **`test_pdf_embedded_figures.py`** — `figure.detect = pdf-embedded` on a fixture
   PDF with an embedded raster figure yields a crop + appended placeholder (§8.4).
 - **`test_splitter.py`** — section-detection on a battery of synthetic markdown

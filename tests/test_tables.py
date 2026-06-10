@@ -7,11 +7,15 @@ cache key, and mocked pipeline/bundle integration (run + ocr→describe).
 
 from __future__ import annotations
 
+import hashlib
+import io
 import json
+import logging
 from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
+from PIL import Image
 
 from inscriber import cache as cache_mod
 from inscriber import pipeline
@@ -19,14 +23,18 @@ from inscriber.bundle import BundleError, read_bundle
 from inscriber.cache import make_table_key, make_vlm_key
 from inscriber.llama.client import ChatClient
 from inscriber.llama.server import LlamaServerManager
-from inscriber.models import ResolutionMode, RunConfig
+from inscriber.models import Region, ResolutionMode, RunConfig
 from inscriber.ocr.deepseek import DeepSeekOcrBackend
+from inscriber.pdf.crop import crop_region_bytes
 from inscriber.pdf.rasterize import rasterize
 from inscriber.postprocess.tables import (
+    TABLE_PROMPT_TEMPLATE,
+    TABLE_PROMPT_TEMPLATE_CROPPED,
     blob_is_refinable,
     find_table_blobs,
     format_table_prompt,
     locator_text,
+    match_table_regions,
     sanitize_table_output,
     splice_tables,
     table_page_context,
@@ -105,6 +113,109 @@ def test_format_table_prompt_contains_all_parts():
     assert "Output ONLY the markdown table. No commentary." in prompt
 
 
+def test_format_cropped_table_prompt():
+    prompt = format_table_prompt(
+        BLOB, "Page prose here.", table_index=1, table_count=3, cropped=True
+    )
+    # Same pinned mock discriminator as the whole-page variant.
+    assert prompt.startswith(
+        "You are reconstructing ONE table from a scientific paper as clean GitHub-flavored Markdown."
+    )
+    assert "cropped view of the table" in prompt
+    assert "This page contains" not in prompt  # no locator on the cropped path
+    assert "<page_text>\nPage prose here.\n</page_text>" in prompt
+    assert prompt.rstrip().endswith(BLOB)
+
+
+def test_cropped_template_shares_validated_tail():
+    # Everything from the OCR caveat onward (guidelines, context, blob slots)
+    # must stay byte-identical to the validated whole-page template — only the
+    # locator/crop preamble and the "you are given …" image wording differ.
+    marker = "The OCR is generally accurate but NOT perfect"
+    assert (
+        TABLE_PROMPT_TEMPLATE.split(marker, 1)[1]
+        == TABLE_PROMPT_TEMPLATE_CROPPED.split(marker, 1)[1]
+    )
+
+
+# --------------------------------------------------------------------------- #
+# blob ↔ grounded-table-region matching (cropped input path)
+# --------------------------------------------------------------------------- #
+
+BLOB2 = "<table><td>Alpha:1.0</td><td>Beta:2.0</td></table>"
+
+
+def _table_region(text: str, bbox=(0.1, 0.5, 0.9, 0.7), label: str = "table") -> Region:
+    return Region(label=label, bbox_norm=bbox, text=text)
+
+
+def test_match_table_regions_by_content():
+    r1 = _table_region(BLOB, bbox=(0.1, 0.2, 0.9, 0.4))
+    r2 = _table_region(BLOB2, bbox=(0.1, 0.6, 0.9, 0.8))
+    # Region order ≠ blob order: content decides, not position in the list.
+    assert match_table_regions([BLOB2, BLOB], [r1, r2]) == [r2, r1]
+
+
+def test_match_table_regions_ignores_non_table_labels():
+    # A text-block bbox is not a table bbox even when its text holds the blob.
+    assert match_table_regions([BLOB], [_table_region(BLOB, label="text")]) == [None]
+
+
+def test_match_table_regions_unmatched_blob_is_none():
+    # Hand-edited markdown / stale region: content no longer matches.
+    assert match_table_regions([BLOB], [_table_region(BLOB2)]) == [None]
+
+
+def test_match_table_regions_duplicate_blobs_match_in_order():
+    r1 = _table_region(BLOB, bbox=(0.1, 0.1, 0.9, 0.3))
+    r2 = _table_region(BLOB, bbox=(0.1, 0.6, 0.9, 0.8))
+    assert match_table_regions([BLOB, BLOB], [r1, r2]) == [r1, r2]
+
+
+def test_match_table_regions_prefers_exact_over_containment():
+    # An earlier region whose text merely CONTAINS the blob must not steal it
+    # from the later region whose text IS the blob.
+    aggregate = _table_region(f"prose around {BLOB} more prose", bbox=(0.1, 0.1, 0.9, 0.3))
+    exact = _table_region(BLOB, bbox=(0.1, 0.6, 0.9, 0.8))
+    assert match_table_regions([BLOB], [aggregate, exact]) == [exact]
+
+
+def test_match_table_regions_skips_degenerate_bbox():
+    sliver = _table_region(BLOB, bbox=(0.5, 0.2, 0.505, 0.8))  # x-span < MIN_TABLE_REGION_SPAN
+    assert match_table_regions([BLOB], [sliver]) == [None]
+
+
+def test_match_table_regions_skips_textless_region():
+    assert match_table_regions([BLOB], [_table_region("")]) == [None]
+
+
+# --------------------------------------------------------------------------- #
+# region cropping (in-memory)
+# --------------------------------------------------------------------------- #
+
+
+def _png(width: int, height: int) -> bytes:
+    buf = io.BytesIO()
+    Image.new("RGB", (width, height), (250, 250, 250)).save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def test_crop_region_bytes_dimensions():
+    out = crop_region_bytes(_png(1000, 2000), (0.25, 0.25, 0.75, 0.5), padding=0.02)
+    img = Image.open(io.BytesIO(out))
+    # x: (0.23..0.77)×1000 → 540 px; y: (0.23..0.52)×2000 → 580 px.
+    assert img.size == (540, 580)
+
+
+def test_crop_region_bytes_clamps_at_page_edges():
+    out = crop_region_bytes(_png(100, 100), (0.0, 0.0, 1.0, 1.0), padding=0.05)
+    assert Image.open(io.BytesIO(out)).size == (100, 100)
+
+
+def test_crop_region_bytes_degenerate_returns_none():
+    assert crop_region_bytes(_png(100, 100), (0.5, 0.5, 0.5, 0.5), padding=0.0) is None
+
+
 def test_sanitize_accepts_clean_pipe_table():
     assert sanitize_table_output(PIPE_TABLE) == PIPE_TABLE
 
@@ -178,6 +289,15 @@ def test_restructure_table_truncated_returns_none():
     assert backend.restructure_table(b"png", prompt) is None
 
 
+def test_build_table_prompt_cropped_variant():
+    backend = GemmaVlmBackend()
+    prompt = backend.build_table_prompt(
+        BLOB, "page text", table_index=1, table_count=2, cropped=True
+    )
+    assert "cropped view of the table" in prompt
+    assert "This page contains" not in prompt
+
+
 def test_describe_sends_thinking_kwarg():
     client = _FakeClient("<img_desc>A chart.</img_desc>")
     backend = GemmaVlmBackend(client=client)
@@ -220,6 +340,52 @@ def test_thinking_kwarg_is_key_material():
     assert on != off
 
 
+_KEY_KWARGS = dict(
+    page_image_hash="h",
+    vlm_backend_name="gemma",
+    vlm_model_identity="m",
+    vlm_mmproj_identity="p",
+    server_identity="version: 9587 (abc1234)",
+    full_assembled_prompt="prompt",
+    sampling={"temperature": 0},
+    chat_template_kwargs={"enable_thinking": True},
+)
+
+
+def test_table_key_page_path_unchanged_by_crop_feature():
+    # The crop fields are added to the payload CONDITIONALLY so whole-page-path
+    # keys stay byte-identical to the pre-crop scheme (warm caches preserved).
+    # This pins the legacy payload shape.
+    legacy_payload = json.dumps(
+        {
+            "kind": "table-restructure",
+            "page_image": "h",
+            "backend": "gemma",
+            "model": "m",
+            "mmproj": "p",
+            "server": "version: 9587 (abc1234)",
+            "prompt": "prompt",
+            "sampling": {"temperature": 0},
+            "chat_template_kwargs": {"enable_thinking": True},
+        },
+        sort_keys=True,
+    )
+    expected = hashlib.sha256(legacy_payload.encode("utf-8")).hexdigest()
+    assert make_table_key(**_KEY_KWARGS) == expected
+
+
+def test_table_key_crop_fields_are_key_material():
+    k_page = make_table_key(**_KEY_KWARGS)
+    k_crop = make_table_key(**_KEY_KWARGS, crop_bbox=(0.1, 0.2, 0.9, 0.5), crop_padding=0.02)
+    k_other_bbox = make_table_key(
+        **_KEY_KWARGS, crop_bbox=(0.1, 0.2, 0.9, 0.6), crop_padding=0.02
+    )
+    k_other_pad = make_table_key(
+        **_KEY_KWARGS, crop_bbox=(0.1, 0.2, 0.9, 0.5), crop_padding=0.05
+    )
+    assert len({k_page, k_crop, k_other_bbox, k_other_pad}) == 4
+
+
 # --------------------------------------------------------------------------- #
 # pipeline integration (mocked at the chat boundary)
 # --------------------------------------------------------------------------- #
@@ -255,10 +421,22 @@ def _base_cfg(tmp_path, models, out, command="run"):
     return cfg
 
 
-def _mock_inference(monkeypatch, *, table_response=PIPE_TABLE, table_finish="stop"):
-    """Mock serve + chat. OCR returns the fixture raw plus a degenerate <table>
-    block; table prompts return ``table_response``; figure prompts an img_desc.
-    Returns the list of table-prompt calls (for cache-hit assertions)."""
+class _RecordedCalls:
+    """What the mocked chat boundary saw: table prompts + the image each table
+    call carried (crop vs whole page), and the page image the OCR call sent."""
+
+    def __init__(self) -> None:
+        self.prompts: list[str] = []
+        self.images: list[bytes] = []
+        self.ocr_images: list[bytes] = []
+
+
+def _mock_inference(monkeypatch, *, table_response=PIPE_TABLE, table_finish="stop",
+                    raw_extra=RAW_TABLE_BLOCK):
+    """Mock serve + chat. OCR returns the fixture raw plus ``raw_extra`` (a
+    grounded degenerate <table> block by default); table prompts return
+    ``table_response``; figure prompts an img_desc. Returns a
+    :class:`_RecordedCalls` (for cache-hit / crop-path assertions)."""
 
     @contextmanager
     def fake_serve(self, spec):
@@ -268,18 +446,20 @@ def _mock_inference(monkeypatch, *, table_response=PIPE_TABLE, table_finish="sto
     monkeypatch.setattr(pipeline, "find_binary", lambda *a, **k: Path("llama-server"))
 
     raw = (FIXTURES / "deepseek_paper_p1_raw.txt").read_text(encoding="utf-8")
-    raw += RAW_TABLE_BLOCK
-    table_calls: list[str] = []
+    raw += raw_extra
+    calls = _RecordedCalls()
 
     def fake_chat_image(self, *, image_png, prompt, max_tokens=None, sampling=None,
                         timeout_s=None, image_first=True, chat_template_kwargs=None):
         self.last_completion_tokens = 10
         if "reconstructing ONE table" in prompt:  # table restructure call
-            table_calls.append(prompt)
+            calls.prompts.append(prompt)
+            calls.images.append(image_png)
             self.last_finish_reason = table_finish
             return table_response
         self.last_finish_reason = "stop"
         if "Convert the document to markdown" in prompt:  # OCR (grounded or plain)
+            calls.ocr_images.append(image_png)
             return raw
         return "<img_desc>A line chart trending upward.</img_desc>"  # figure call
 
@@ -297,11 +477,11 @@ def _mock_inference(monkeypatch, *, table_response=PIPE_TABLE, table_finish="sto
         raise AssertionError(f"unexpected text-only chat call: {text[:80]!r}")
 
     monkeypatch.setattr(ChatClient, "chat", fake_chat)
-    return table_calls
+    return calls
 
 
-def test_run_refines_table(tmp_path, monkeypatch, hermetic_cache):
-    table_calls = _mock_inference(monkeypatch)
+def test_run_refines_table_with_cropped_input(tmp_path, monkeypatch, hermetic_cache):
+    calls = _mock_inference(monkeypatch)
     out = tmp_path / "out"
     cfg = _base_cfg(tmp_path, _dummy_models(tmp_path), out)
     pipeline.run(cfg)
@@ -310,11 +490,18 @@ def test_run_refines_table(tmp_path, monkeypatch, hermetic_cache):
     assert PIPE_TABLE in text  # blob replaced by the restructured table
     assert "<table" not in text
     assert "> **Image description.** A line chart trending upward." in text
-    assert len(table_calls) == 1
-    # The locator + context + blob all reached the prompt.
-    assert "This page contains a single table; reconstruct it." in table_calls[0]
-    assert "## Abstract" in table_calls[0]  # page text context
-    assert BLOB in table_calls[0]
+    assert len(calls.prompts) == 1
+    # The grounded table region matched → the cropped prompt variant, no locator;
+    # context + blob still reach the prompt.
+    assert "cropped view of the table" in calls.prompts[0]
+    assert "This page contains" not in calls.prompts[0]
+    assert "## Abstract" in calls.prompts[0]  # page text context
+    assert BLOB in calls.prompts[0]
+    # …and the image sent is the crop, not the page raster the OCR call saw.
+    page_img = Image.open(io.BytesIO(calls.ocr_images[0]))
+    crop_img = Image.open(io.BytesIO(calls.images[0]))
+    assert crop_img.width < page_img.width
+    assert crop_img.height < page_img.height
     assert text.rstrip().endswith(
         "*Transcribed with OCR and VLMs; text, equations, tables, and figure "
         "descriptions may contain mistakes.*"
@@ -322,23 +509,23 @@ def test_run_refines_table(tmp_path, monkeypatch, hermetic_cache):
 
 
 def test_run_table_cache_hit_on_rerun(tmp_path, monkeypatch, hermetic_cache):
-    table_calls = _mock_inference(monkeypatch)
+    calls = _mock_inference(monkeypatch)
     out = tmp_path / "out"
     cfg = _base_cfg(tmp_path, _dummy_models(tmp_path), out)
     pipeline.run(cfg)
     pipeline.run(cfg)
-    assert len(table_calls) == 1  # second run served from the table cache
+    assert len(calls.prompts) == 1  # second run served from the table cache
 
 
 def test_no_table_refine_keeps_blob(tmp_path, monkeypatch, hermetic_cache):
-    table_calls = _mock_inference(monkeypatch)
+    calls = _mock_inference(monkeypatch)
     out = tmp_path / "out"
     cfg = _base_cfg(tmp_path, _dummy_models(tmp_path), out)
     cfg.table.refine = False
     pipeline.run(cfg)
     text = (out / "sample_paper.md").read_text(encoding="utf-8")
     assert BLOB in text
-    assert table_calls == []
+    assert calls.prompts == []
 
 
 def test_truncated_table_keeps_blob(tmp_path, monkeypatch, hermetic_cache):
@@ -379,44 +566,78 @@ def test_tables_refined_even_without_figures(tmp_path, monkeypatch, hermetic_cac
 def test_concurrent_mode_refines_tables(tmp_path, monkeypatch, hermetic_cache):
     # Concurrent mode pre-launches the VLM server OUTSIDE the lazy session; the
     # table pass must reach it via the endpoint override (no second server).
-    table_calls = _mock_inference(monkeypatch)
+    calls = _mock_inference(monkeypatch)
     out = tmp_path / "out"
     cfg = _base_cfg(tmp_path, _dummy_models(tmp_path), out)
     cfg.inference.mode = "concurrent"
     pipeline.run(cfg)
     text = (out / "sample_paper.md").read_text(encoding="utf-8")
     assert PIPE_TABLE in text
-    assert len(table_calls) == 1
+    assert len(calls.prompts) == 1
 
 
-def test_multiple_tables_on_page_get_ordinal_locators(tmp_path, monkeypatch, hermetic_cache):
-    blob2 = "<table><td>Alpha:1.0</td><td>Beta:2.0</td></table>"
-    extra = f"{RAW_TABLE_BLOCK}\ntext[[100, 965, 500, 980]]\nMore prose.\n\ntable[[120, 982, 880, 995]]\n{blob2}\n"
-    table_calls = _mock_inference(monkeypatch)
-    raw = (FIXTURES / "deepseek_paper_p1_raw.txt").read_text(encoding="utf-8") + extra
-
-    def fake_chat_image(self, *, image_png, prompt, max_tokens=None, sampling=None,
-                        timeout_s=None, image_first=True, chat_template_kwargs=None):
-        self.last_finish_reason = "stop"
-        self.last_completion_tokens = 10
-        if "reconstructing ONE table" in prompt:
-            table_calls.append(prompt)
-            return PIPE_TABLE
-        if "Convert the document to markdown" in prompt:
-            return raw
-        return "<img_desc>A chart.</img_desc>"
-
-    monkeypatch.setattr(ChatClient, "chat_image", fake_chat_image)
+def test_multiple_grounded_tables_get_distinct_crops(tmp_path, monkeypatch, hermetic_cache):
+    extra = (
+        f"{RAW_TABLE_BLOCK}\ntext[[100, 950, 500, 962]]\nMore prose.\n\n"
+        f"table[[120, 965, 880, 995]]\n{BLOB2}\n"
+    )
+    calls = _mock_inference(monkeypatch, raw_extra=extra)
     out = tmp_path / "out"
     cfg = _base_cfg(tmp_path, _dummy_models(tmp_path), out)
     pipeline.run(cfg)
 
-    assert len(table_calls) == 2
-    assert "This page contains 2 tables; reconstruct the 1st table" in table_calls[0]
-    assert "This page contains 2 tables; reconstruct the 2nd table" in table_calls[1]
+    assert len(calls.prompts) == 2
+    for prompt in calls.prompts:  # both grounded → both cropped, no locators
+        assert "cropped view of the table" in prompt
+        assert "This page contains" not in prompt
+    assert calls.images[0] != calls.images[1]  # different bboxes → different crops
     text = (out / "sample_paper.md").read_text(encoding="utf-8")
     assert "<table" not in text
     assert text.count("| Dep. Variable | CC |") == 2  # both blobs replaced
+
+
+def test_ungrounded_tables_fall_back_to_page_with_locators(
+    tmp_path, monkeypatch, hermetic_cache, caplog
+):
+    # Blobs inside text-labeled blocks: no table region to crop to → the
+    # validated whole-page path, count-aware locators, and an INFO line.
+    extra = (
+        f"\n\ntext[[100, 850, 880, 905]]\n{BLOB}\n\n"
+        f"text[[100, 910, 880, 960]]\n{BLOB2}\n"
+    )
+    calls = _mock_inference(monkeypatch, raw_extra=extra)
+    out = tmp_path / "out"
+    cfg = _base_cfg(tmp_path, _dummy_models(tmp_path), out)
+    logging.getLogger("inscriber").propagate = True  # let caplog see records
+    with caplog.at_level(logging.INFO, logger="inscriber"):
+        pipeline.run(cfg)
+
+    assert len(calls.prompts) == 2
+    assert "This page contains 2 tables; reconstruct the 1st table" in calls.prompts[0]
+    assert "This page contains 2 tables; reconstruct the 2nd table" in calls.prompts[1]
+    assert calls.images[0] == calls.ocr_images[0]  # whole page raster sent
+    assert calls.images[1] == calls.ocr_images[0]
+    assert "no grounded table region matched" in caplog.text
+    text = (out / "sample_paper.md").read_text(encoding="utf-8")
+    assert "<table" not in text
+
+
+def test_mixed_page_crops_matched_table_and_falls_back_for_other(
+    tmp_path, monkeypatch, hermetic_cache
+):
+    # First blob grounded (table region), second not (text block): the first
+    # gets the crop, the second the whole page + a correct 2-of-2 locator.
+    extra = f"{RAW_TABLE_BLOCK}\ntext[[100, 965, 880, 990]]\n{BLOB2}\n"
+    calls = _mock_inference(monkeypatch, raw_extra=extra)
+    out = tmp_path / "out"
+    cfg = _base_cfg(tmp_path, _dummy_models(tmp_path), out)
+    pipeline.run(cfg)
+
+    assert len(calls.prompts) == 2
+    assert "cropped view of the table" in calls.prompts[0]
+    assert "This page contains 2 tables; reconstruct the 2nd table" in calls.prompts[1]
+    assert calls.images[0] != calls.ocr_images[0]  # crop
+    assert calls.images[1] == calls.ocr_images[0]  # whole page
 
 
 def test_tables_skipped_gracefully_without_vlm_config(tmp_path, monkeypatch, hermetic_cache):
@@ -497,7 +718,7 @@ def test_describe_refines_tables_from_bundle(
     monkeypatch.setattr(pipeline, "run_ocr_pass", lambda cfg, resolved, work: (pages, results))
     bundle_dir = Path(pipeline.run_ocr(_ocr_cfg(tmp_path, out))[0])
 
-    table_calls = _mock_inference(monkeypatch)
+    calls = _mock_inference(monkeypatch)
     models = _dummy_models(tmp_path)
     dcfg = RunConfig(command="describe", input=str(bundle_dir))
     dcfg.output.dir = str(out)
@@ -509,7 +730,31 @@ def test_describe_refines_tables_from_bundle(
     text = (out / "sample_paper.md").read_text(encoding="utf-8")
     assert PIPE_TABLE in text
     assert "<table" not in text
-    assert len(table_calls) == 1
+    assert len(calls.prompts) == 1
+    # Regions ride the bundle manifest, so describe takes the cropped path too.
+    assert "cropped view of the table" in calls.prompts[0]
+    crop_img = Image.open(io.BytesIO(calls.images[0]))
+    page_img = Image.open(io.BytesIO(pages[0].png_bytes))
+    assert crop_img.width < page_img.width and crop_img.height < page_img.height
+
+
+def test_run_then_describe_share_table_cache(tmp_path, monkeypatch, hermetic_cache):
+    # The cropped-path key is (raster hash + bbox + padding); the bundle stores
+    # the raster VERBATIM, so a describe after a run is a pure cache hit.
+    calls = _mock_inference(monkeypatch)
+    out = tmp_path / "out"
+    models = _dummy_models(tmp_path)
+    pipeline.run(_base_cfg(tmp_path, models, out))
+    assert len(calls.prompts) == 1
+
+    bundle_dir = Path(pipeline.run_ocr(_base_cfg(tmp_path, models, out, command="ocr"))[0])
+    dcfg = RunConfig(command="describe", input=str(bundle_dir))
+    dcfg.output.dir = str(out)
+    dcfg.llama.bin_dir = "/fake/bin"
+    dcfg.vlm.model = models["vlm"]
+    dcfg.vlm.mmproj = models["vlm_mmproj"]
+    pipeline.describe(dcfg)
+    assert len(calls.prompts) == 1  # no second VLM table call
 
 
 def test_describe_old_bundle_without_raster_keeps_blob(
@@ -526,7 +771,7 @@ def test_describe_old_bundle_without_raster_keeps_blob(
     manifest["pages"][0].pop("raster_path", None)
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
-    table_calls = _mock_inference(monkeypatch)
+    calls = _mock_inference(monkeypatch)
     models = _dummy_models(tmp_path)
     dcfg = RunConfig(command="describe", input=str(bundle_dir))
     dcfg.output.dir = str(out)
@@ -537,7 +782,7 @@ def test_describe_old_bundle_without_raster_keeps_blob(
 
     text = (out / "sample_paper.md").read_text(encoding="utf-8")
     assert BLOB in text
-    assert table_calls == []
+    assert calls.prompts == []
 
 
 def test_bundle_missing_referenced_raster_rejected(tmp_path):

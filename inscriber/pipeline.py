@@ -52,6 +52,7 @@ from inscriber.models import (
     Figure,
     OcrPageResult,
     PageImage,
+    Region,
     ResolutionMode,
     ResolvedInput,
     RunConfig,
@@ -65,7 +66,7 @@ from inscriber.output import (
     write_split_documents,
     write_text_file,
 )
-from inscriber.pdf.crop import crop_figures
+from inscriber.pdf.crop import crop_figures, crop_region_bytes
 from inscriber.pdf.figures import select_figure_regions
 from inscriber.pdf.rasterize import rasterize
 from inscriber.postprocess.inject import (
@@ -88,8 +89,10 @@ from inscriber.postprocess.stitch import (
     strip_running_headers_footers,
 )
 from inscriber.postprocess.tables import (
+    TABLE_CROP_PADDING,
     blob_is_refinable,
     find_table_blobs,
+    match_table_regions,
     sanitize_table_output,
     splice_tables,
     table_page_context,
@@ -113,6 +116,8 @@ class _Page:
     page_text: str  # placeholders stripped, for figure context
     figures: list[Figure] = field(default_factory=list)
     raster_png: bytes | None = None  # verbatim page render (table restructuring input)
+    regions: list[Region] = field(default_factory=list)  # grounded layout regions
+    #   (the table pass crops to matched ``table`` regions, DESIGN §9.7)
 
 
 @contextmanager
@@ -329,6 +334,7 @@ def _crop_pages(
                 markdown=md,
                 page_text=PLACEHOLDER_RE.sub("", md).strip(),
                 figures=figs,
+                regions=res.regions,
             )
         )
     return out
@@ -414,9 +420,27 @@ class _VlmSession:
             self.proto.client = None
 
 
+def _dump_table_crop(work_dir: str | Path, page_number: int, index: int, png: bytes) -> None:
+    """Save a table crop under the work dir (debugging aid, like figure crops:
+    kept by ``--keep-intermediates`` and on failure). Best-effort only."""
+    try:
+        d = Path(work_dir) / "table_crops"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / f"table_p{page_number}_{index}.png").write_bytes(png)
+    except OSError:  # never fail the pass over a debug artifact
+        pass
+
+
 def _refine_tables(cfg: RunConfig, pages: list[_Page], session: _VlmSession) -> int:
     """Restructure DeepSeek ``<table>`` blobs via the VLM, before figure description
-    (dev/notes/2026-06-10-table-reconstruction-findings.md).
+    (DESIGN §9.7; dev/notes/2026-06-10-table-reconstruction-findings.md).
+
+    Each blob is content-matched to its grounded ``table`` region and the VLM
+    receives the **table crop** from the verbatim page raster — crisper than the
+    whole page, which Gemma downscales to ~896 px. An unmatched blob falls back
+    to the validated whole-page input, announced at INFO (expected for caches/
+    bundles predating table grounding, hand-edited bundle markdown, or an
+    ungrounded table).
 
     Cache-first; the shared ``session`` launches the VLM server only on a miss.
     Any per-table failure (error, truncation, unusable output) keeps the original
@@ -427,8 +451,9 @@ def _refine_tables(cfg: RunConfig, pages: list[_Page], session: _VlmSession) -> 
     if not cfg.table.refine:
         return 0
 
-    # (page, page-context, blob-count-on-page, [(index, start, end, blob), ...])
-    work: list[tuple[_Page, str, int, list[tuple[int, int, int, str]]]] = []
+    # (page, page-context, blob-count-on-page,
+    #  [(index, start, end, blob, matched-table-region-or-None), ...])
+    work: list[tuple[_Page, str, int, list[tuple[int, int, int, str, Region | None]]]] = []
     for pg in pages:
         spans = find_table_blobs(pg.markdown)
         if not spans:
@@ -440,12 +465,17 @@ def _refine_tables(cfg: RunConfig, pages: list[_Page], session: _VlmSession) -> 
                 pg.page_number, len(spans),
             )
             continue
-        entries = [
+        refinable = [
             (i, start, end, blob)
             for i, (start, end, blob) in enumerate(spans, 1)
             if blob_is_refinable(blob)
         ]
-        if entries:
+        if refinable:
+            matches = match_table_regions([b for _, _, _, b in refinable], pg.regions)
+            entries = [
+                (i, start, end, blob, region)
+                for (i, start, end, blob), region in zip(refinable, matches, strict=True)
+            ]
             # Context computed once per page against the pre-splice markdown (all
             # blobs + placeholders stripped), exactly as in the validated prompt.
             work.append((pg, table_page_context(pg.markdown), len(spans), entries))
@@ -467,11 +497,21 @@ def _refine_tables(cfg: RunConfig, pages: list[_Page], session: _VlmSession) -> 
     refined = 0
     for pg, context, blob_count, entries in work:
         replacements: list[tuple[int, int, str]] = []
-        for index, start, end, blob in entries:
+        for index, start, end, blob, region in entries:
             done += 1
+            if region is None:
+                logger.info(
+                    "table %d/%d (page %d): no grounded table region matched; "
+                    "sending the whole page image",
+                    done, total, pg.page_number,
+                )
             prompt = proto.build_table_prompt(
-                blob, context, table_index=index, table_count=blob_count
+                blob, context, table_index=index, table_count=blob_count,
+                cropped=region is not None,
             )
+            # Cropped path: the key is (raster hash + bbox + padding) — the
+            # crop's deterministic inputs — so run/describe share entries and a
+            # cache hit needs no pixel work (see make_table_key).
             key = make_table_key(
                 page_image_hash=sha256_bytes(pg.raster_png),
                 vlm_backend_name=proto.name,
@@ -481,6 +521,8 @@ def _refine_tables(cfg: RunConfig, pages: list[_Page], session: _VlmSession) -> 
                 full_assembled_prompt=prompt,
                 sampling=proto.sampling(),
                 chat_template_kwargs=proto.chat_template_kwargs(),
+                crop_bbox=region.bbox_norm if region is not None else None,
+                crop_padding=TABLE_CROP_PADDING if region is not None else None,
             )
             cached = vlm_cache.get(key)
             if cached is not None:
@@ -488,10 +530,27 @@ def _refine_tables(cfg: RunConfig, pages: list[_Page], session: _VlmSession) -> 
                 replacements.append((start, end, cached))
                 refined += 1
                 continue
-            logger.info("refining table %d/%d (page %d)…", done, total, pg.page_number)
+            image = pg.raster_png
+            if region is not None:
+                image = crop_region_bytes(
+                    pg.raster_png, region.bbox_norm, padding=TABLE_CROP_PADDING
+                )
+                if image is None:  # unreachable for real rasters (span-guarded)
+                    logger.warning(
+                        "table %d/%d (page %d): degenerate table crop (bbox=%s); "
+                        "keeping raw OCR table",
+                        done, total, pg.page_number, region.bbox_norm,
+                    )
+                    continue
+                _dump_table_crop(session.work_dir, pg.page_number, index, image)
+            logger.info(
+                "refining table %d/%d (page %d, %s)…",
+                done, total, pg.page_number,
+                "cropped" if region is not None else "whole page",
+            )
             try:
                 # The key's prompt string is the one sent — assembled exactly once.
-                raw = session.backend().restructure_table(pg.raster_png, prompt)
+                raw = session.backend().restructure_table(image, prompt)
             except ConfigError:
                 raise  # missing binary is a setup error, not a per-table failure
             except Exception as e:  # noqa: BLE001 - resilience (DESIGN §16)
@@ -859,6 +918,7 @@ def describe(cfg: RunConfig) -> list[str]:
             page_text=PLACEHOLDER_RE.sub("", p.markdown).strip(),
             figures=p.figures,
             raster_png=(bundle.dir / p.raster_path).read_bytes() if p.raster_path else None,
+            regions=p.regions,
         )
         for p in bundle.pages
     ]
