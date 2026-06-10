@@ -12,7 +12,7 @@ using the actual inscriber inference layer:
 
 Usage (once the mmproj GGUFs exist), e.g.::
 
-    python scripts/m1a_spike.py \
+    python dev/scripts/m1a_spike.py \
         --bin-dir "C:/Users/luigi/llms" \
         --ocr-model "C:/Users/luigi/llms/models/deepseek-ocr-bf16.gguf" \
         --ocr-mmproj "C:/Users/luigi/llms/models/mmproj-deepseek-ocr-bf16.gguf" \
@@ -162,7 +162,7 @@ def main() -> int:
         print(f"  saved {out.name} ({len(raw)} chars)")
 
     verdict(raws[0], args.resolution)  # calibration page drives the frame check
-    print(f"\nNEXT: record the chosen path ({path_used}) and frame in docs/M1A-FINDINGS.md, "
+    print(f"\nNEXT: record the chosen path ({path_used}) and frame in dev/docs/M1A-FINDINGS.md, "
           f"then lock test_deepseek_parser.py to these fixtures.")
     return 0
 

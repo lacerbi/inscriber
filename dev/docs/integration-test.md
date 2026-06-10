@@ -14,7 +14,7 @@ on GPU-less runners — see `.github/workflows/ci.yml`). Run it before a release
   - **VLM:** Gemma 4 E4B — `gemma-4-E4B-it-Q4_K_M.gguf` + `mmproj-BF16.gguf`.
 - A known sample PDF (e.g. `tests/fixtures/sample_paper.pdf`, or a real arXiv PDF).
 
-See `docs/M1A-FINDINGS.md` for the pinned, empirically-confirmed facts (server HTTP
+See `dev/docs/M1A-FINDINGS.md` for the pinned, empirically-confirmed facts (server HTTP
 path works; image-before-text required; padded-square coordinate frame; the
 `LABEL[[bbox]]` grounding format).
 

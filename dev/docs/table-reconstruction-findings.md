@@ -1,9 +1,18 @@
 # Table reconstruction findings (post-v1 investigation)
 
-> **Status:** Exploration / not yet implemented in the pipeline. Captures what was
-> learned about improving table quality, and the prompt that works, so the work
-> isn't lost. Tested against arXiv `2510.09477v2` (39-page ICLR paper) on
-> llama.cpp build 9028, RTX 4060 8GB.
+> **Status: IMPLEMENTED** (2026-06-10) as the pipeline's table-restructuring pass —
+> see DESIGN §9.7 and `inscriber/postprocess/tables.py` (prompt/splicing),
+> `inscriber/pipeline.py` `_refine_tables` (orchestration), `vlm/gemma.py`
+> `restructure_table` (the call). Default on (`[table] refine`, `--no-table-refine`).
+> Implementation deltas vs. this note: no per-call `max_tokens` — generation is
+> bounded by `ctx_size` (default 16384) and truncation is detected via
+> `finish_reason`, falling back to the raw OCR blob; Gemma thinking is activated
+> explicitly (`chat_template_kwargs: {"enable_thinking": true}`); the system/user
+> message split below remains future work.
+>
+> Originally: exploration capturing what was learned about improving table
+> quality, and the prompt that works, so the work isn't lost. Tested against
+> arXiv `2510.09477v2` (39-page ICLR paper) on llama.cpp build 9028, RTX 4060 8GB.
 
 ## The problem
 
@@ -125,6 +134,13 @@ not a reliable baseline (false positives and negatives).
   before answering (stripped from `content`, not surfaced in `reasoning_content`).
   The VLM pass runs at `max_tokens=4096`, which absorbs think+answer; tables needed
   ~6–8k. The truncation marker (`[...]`) flags responses that hit the cap.
+- **Thinking toggle measured** (2026-06-10, build 9028, via
+  `dev/scripts/verify_thinking_spike.py`): the per-request
+  `chat_template_kwargs: {"enable_thinking": …}` works in both directions — the
+  same one-word VQA spends **103** completion tokens with `true`, **2** with
+  `false`, and **103 with the kwarg omitted** (i.e. the model/template default is
+  thinking ON). inscriber sends `true` explicitly so this no longer depends on
+  the build's default.
 - **Cropping** would sharpen headers further (Gemma downscales the whole page to
   ~896px, so small header glyphs are lost) — but DeepSeek does not ground tables
   with boxes, so there is no clean table bbox to crop to. Open problem.

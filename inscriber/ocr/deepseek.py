@@ -1,6 +1,6 @@
 """DeepSeek-OCR backend (DESIGN §8.3) — pinned to the M1a real-hardware findings.
 
-**M1a divergences from the original DESIGN (see docs/M1A-FINDINGS.md), locked here:**
+**M1a divergences from the original DESIGN (see dev/docs/M1A-FINDINGS.md), locked here:**
 
 * Output is a **block layout list**, one region per block::
 
@@ -54,7 +54,7 @@ def grid_to_norm(
 ) -> tuple[float, float, float, float]:
     """Map a 0–999 **padded-square** grounding box to the original-page [0,1] frame.
 
-    Padded-square (M1a / docs/M1A-FINDINGS.md §Q2): the grid spans a square of side
+    Padded-square (M1a / dev/docs/M1A-FINDINGS.md §Q2): the grid spans a square of side
     ``L = max(W, H)`` with the short axis centered (``pad = (L - dim) / 2``)::
 
         px = grid_x / 999 * L - pad_x   →   x_norm = clamp(px / W, 0, 1)

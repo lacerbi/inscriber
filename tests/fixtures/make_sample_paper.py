@@ -2,7 +2,7 @@
 
 Exercises more DeepSeek-OCR grounding labels than the calibration page (title,
 body text, a figure + caption, a small table, an equation). Run on real hardware
-via scripts/m1a_spike.py --paper to capture the grounded output for the M1b parser
+via dev/scripts/m1a_spike.py --paper to capture the grounded output for the M1b parser
 golden test.
 
     python tests/fixtures/make_sample_paper.py

@@ -4,7 +4,7 @@ Runs the OCR pass on a real PDF twice: the first launches the server and OCRs ea
 page; the second must be served entirely from the per-page cache (server NOT
 relaunched). Prints the assembled per-page markdown (with figure placeholders).
 
-    python scripts/m1b_check.py --pdf tests/fixtures/sample_paper.pdf
+    python dev/scripts/m1b_check.py --pdf tests/fixtures/sample_paper.pdf
 """
 
 from __future__ import annotations
