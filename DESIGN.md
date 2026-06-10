@@ -1,6 +1,6 @@
 # inscriber — Design Document
 
-> **Status:** Implemented (v1 complete per `PLAN-inscriber-v1.md`); this document
+> **Status:** Implemented (v1 complete per `dev/plans/PLAN-inscriber-v1.md`); this document
 > is the **authoritative, living specification** and is kept in sync with the
 > code. Where the original pre-implementation draft made assumptions that real
 > hardware later contradicted, the text below states the **confirmed** behavior

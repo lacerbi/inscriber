@@ -15,5 +15,4 @@
   real models (a living procedure, not a dated note).
 
 User-facing documentation is the root `README.md`; the authoritative
-specification is the root `DESIGN.md` (with `PLAN-inscriber-v1.md` as the build
-roadmap).
+specification is the root `DESIGN.md`.

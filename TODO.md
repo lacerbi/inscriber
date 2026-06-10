@@ -8,25 +8,6 @@ Legend: `[ ]` todo · `[!]` blocked.
 
 ## Pending real-hardware verifications
 
-- [x] ~~**Verify llama.cpp build 9587 before trusting real runs**~~ — done
-      2026-06-10 (`dev/notes/2026-06-10-build-9587-verification.md`). **FAILED as a
-      drop-in: the grounding coordinate frame changed from padded-square to
-      per-axis** (calibration box `[242, 243, 753, 653]` ≈ the per-axis
-      prediction; Δ≈37 off padded-square) → `grid_to_norm` silently shifts
-      every figure crop. Passed everything else: format parses, still no
-      tiling (283/431-token single-slice saturation), thinking kwarg toggles,
-      m1b + the new build-identity cache keys work live — and the PriorGuide
-      p. 5 loop is GONE (37 s, `finish_reason: stop`, lost content
-      recovered). v1 stays pinned on 9028 (`llms/` root); adoption is the
-      item below.
-- [x] ~~**Adopt llama.cpp ≥9587: per-axis grounding frame decision**~~ — done
-      2026-06-10: **re-pinned on ≥ 9587, single frame** (no dual-frame
-      maintenance). `grid_to_norm` is per-axis only;
-      `DeepSeekOcrBackend.min_server_build = 9587` and the pipeline's
-      `_check_server_build` refuse older spawned servers (an endpoint without
-      `/props` `build_info` warns instead). Golden fixtures re-captured on
-      9587; verified live end-to-end (calibration crop within 1% of ground
-      truth). Evidence: `dev/notes/2026-06-10-build-9587-verification.md`.
 - [ ] **Gundam render target** (`dev/notes/2026-06-10-gundam-findings.md`,
       `dev/notes/2026-06-10-build-9587-verification.md`): neither build 9028 nor 9587
       tiles, so gundam is currently a strict alias of `large` (both render
@@ -62,12 +43,12 @@ Legend: `[ ]` todo · `[!]` blocked.
 ## Table-restructuring pass (DESIGN §9.7)
 
 - [!] **Cropped table input** for crisper headers (Gemma downscales the whole
-      page to ~896px, losing small header glyphs) — blocked: DeepSeek does not
-      ground tables with boxes, so there is no clean table bbox to crop to
-      (`dev/notes/2026-06-10-table-reconstruction-findings.md` §Notes). The cost is now
-      quantified: 5 of 10 tables on a real paper carry structure damage,
-      concentrated in dense multi-header layouts
-      (`dev/notes/2026-06-10-e2e-quality-findings.md` §Tables).
+  page to ~896px, losing small header glyphs) — blocked: DeepSeek does not
+  ground tables with boxes, so there is no clean table bbox to crop to
+  (`dev/notes/2026-06-10-table-reconstruction-findings.md` §Notes). The cost is now
+  quantified: 5 of 10 tables on a real paper carry structure damage,
+  concentrated in dense multi-header layouts
+  (`dev/notes/2026-06-10-e2e-quality-findings.md` §Tables).
 - [ ] **Guard against silent structure damage** in restructured tables —
       the worst observed failure is a syntactically clean table that silently
       dropped an entire column group (Table 1 in
@@ -105,15 +86,6 @@ Legend: `[ ]` todo · `[!]` blocked.
 
 ## Planned features
 
-- [x] ~~**BibTeX `auto` mode**~~ — done 2026-06-10
-      (`dev/plans/PLAN-bibtex-auto.md` B0–B4): `bibtex.mode` tri-state
-      (legacy `enabled` alias), cached
-      text-only citability/metadata probe (pinned prompt validated on real
-      hardware — `dev/notes/2026-06-10-bibtex-probe-findings.md`, 4/4 PASS), provenance-
-      first chain (S2-by-arXiv-ID preferring the published version → arXiv
-      export API → S2 title search → local best-effort `@misc`), default
-      flipped to `auto`. Spec: DESIGN §12. Deferred refinements
-      (`--bibtex-source`, Crossref, by-DOI, type inference, …): DESIGN §22.2.
 - [ ] **Publish to PyPI** — the name `inscriber` was verified available
       (DESIGN §18) but nothing is published yet; README documents source
       install until then.
@@ -130,12 +102,6 @@ Legend: `[ ]` todo · `[!]` blocked.
 
 ## Code debts (2026-06-10 implementation review)
 
-- [x] ~~**llama.cpp build identity is not cache-key material**~~ — done
-      2026-06-10: `llama_build_identity` (`llama-server --version`, or the
-      endpoint's `/props` `build_info`) is now in the OCR + VLM keys
-      (DESIGN §8.6/§9.6). The `VlmCache` value-field rename
-      (`"description"` → `"text"`, `VLM_VALUE_SCHEMA` 2) rode the same
-      all-keys-bust, as planned.
 - [ ] **`<table>` inside a fenced code block** would be mis-spliced (blob
       detection doesn't see fences). Unobserved in DeepSeek output — handle if
       another OCR backend can emit fenced HTML. (The companion edge case, a

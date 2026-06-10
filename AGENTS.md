@@ -43,8 +43,9 @@ upstream; DESIGN §2.2, `dev/notes/2026-06-10-build-9587-verification.md`).
 - `TODO.md` tracks concrete pending items (real-hardware verifications, code
   debts, blocked refinements) — add to it rather than burying TODOs in spec
   prose; longer-horizon future work stays in DESIGN §22.
-- `PLAN-inscriber-v1.md` is the build roadmap; `dev/` is developer-only scripts
-  and notes (never user-facing).
+- `dev/` is developer-only material (never user-facing): scripts, the dated
+  lab notes above, and `dev/plans/` — executed feature plans and build
+  roadmaps, archived as design records.
 
 ## Architecture
 
