@@ -12,9 +12,13 @@ Legend: `[ ]` todo · `[!]` blocked.
       `--ocr-resolution gundam` is first exercised, determine empirically
       whether grounding coords are relative to the 1024 global view or the
       tiles; extend the `grid_to_norm` golden tests with the answer.
-- [ ] **Equation fidelity**: check DeepSeek-OCR's LaTeX/math output quality on
-      real papers (inline `\(…\)` observed in M1a); decide whether a
-      normalization pass is needed.
+- [ ] **OCR loop/truncation detection** (`dev/docs/equation-fidelity-findings.md`):
+      a real page looped at BF16 + grounded prompt + DRY and was **silently
+      cached** with half its text missing — `DeepSeekOcrBackend.ocr_page` never
+      checks `finish_reason`. Detect `finish_reason != "stop"` → warn loudly +
+      don't cache the page (DESIGN §16 already promises the logging; mirror the
+      table pass's truncation handling). Note `--refresh` can't fix such a page
+      (deterministic); suggest a different `--ocr-resolution` in the warning.
 
 ## Table-restructuring pass (DESIGN §9.7)
 

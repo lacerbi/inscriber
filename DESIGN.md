@@ -12,10 +12,10 @@
 > `paper2llm`). It is written to be read entirely standalone — every concept,
 > dependency, and external quirk needed to build v1 is described here.
 >
-> **Last updated:** 2026-06-10 (§9.2/§9.6: one VLM backend instance, prompts
-> assembled once — cache keys cannot drift from the requests sent; §9.7:
-> nested-`<table>` guard. Earlier same day: added §9.7; aligned §2.1–2.2, §8.3,
-> §25 with the M1a-confirmed facts)
+> **Last updated:** 2026-06-10 (§2.2: BF16 loop observed in the wild — equation
+> fidelity verified on real hardware, see `dev/docs/equation-fidelity-findings.md`.
+> Earlier same day: §9.2/§9.6 one-VLM-instance consolidation; §9.7 nested-table
+> guard; added §9.7; aligned §2.1–2.2, §8.3, §25 with the M1a-confirmed facts)
 
 ---
 
@@ -149,6 +149,10 @@ So **every** model `inscriber` uses (OCR and VLM) is configured as a
     closest analog — offer these via `server_flags()` as a _partial mitigation_,
     but the **real guards are f16 + a hard `max_tokens` cap + a per-request
     wall-clock timeout + soft-failure** on a looping/truncated page (§5.3, §16).
+    ⚠️ **f16 reduces but does not eliminate loops**: a real page looped at BF16
+    + grounded prompt + DRY + temp 0 (a dense multi-underbrace equation array;
+    2026-06-10, `dev/docs/equation-fidelity-findings.md`). The cap bounded it,
+    but detection of the truncated page is a known gap — tracked in `TODO.md`.
   - Drive OCR **deterministically**: `temperature: 0` + fixed seed (part of the
     cache key, §8.6).
   - **Chat template is path-dependent.** With **`llama-server`**, do **not** pass
