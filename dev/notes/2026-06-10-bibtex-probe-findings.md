@@ -3,7 +3,7 @@
 > **Date:** 2026-06-10 · **Status:** concluded — prompt frozen (DESIGN §12); re-run `dev/scripts/bibtex_probe_check.py` and update this note before changing it.
 
 Hardware: RTX 4060 Laptop 8GB
-llama.cpp: build **9587 (d2e22ed97)**, Clang 20.1.8 Windows x86_64 (`C:/Users/luigi/llms/new`)
+llama.cpp: build **9587 (d2e22ed97)**, Clang 20.1.8 Windows x86_64 (`C:/Users/.../llms`)
 Model: `gemma-4-E4B-it-qat-UD-Q4_K_XL.gguf` + `gemma-4-E4B-it-mmproj-BF16.gguf`, `-ngl auto`, ctx 16384
 Script: `dev/scripts/bibtex_probe_check.py` (repeatable; synthesizes the non-citable PDFs on the fly)
 
@@ -18,12 +18,12 @@ equivalent for this purpose.
 
 ## Results — 4/4 PASS, zero prompt tuning needed
 
-| document | expected | verdict | extraction | tokens (incl. thinking) | finish |
-| --- | --- | --- | --- | --- | --- |
-| `tests/fixtures/sample_paper.pdf` | citable | ✅ `citable: true` | title + 2 authors (no year/venue on page — correctly omitted) | 427 | stop |
-| `out/2510.09477v2.pdf` (real arXiv paper) | citable | ✅ `citable: true` | title + all 9 authors + year 2026 + venue ICLR | 689 | stop |
-| synthetic slides (quarterly review deck) | not citable | ✅ `citable: false` | no fields emitted | 349 | stop |
-| synthetic invoice | not citable | ✅ `citable: false` | no fields emitted | 400 | stop |
+| document                                  | expected    | verdict             | extraction                                                    | tokens (incl. thinking) | finish |
+| ----------------------------------------- | ----------- | ------------------- | ------------------------------------------------------------- | ----------------------- | ------ |
+| `tests/fixtures/sample_paper.pdf`         | citable     | ✅ `citable: true`  | title + 2 authors (no year/venue on page — correctly omitted) | 427                     | stop   |
+| `out/2510.09477v2.pdf` (real arXiv paper) | citable     | ✅ `citable: true`  | title + all 9 authors + year 2026 + venue ICLR                | 689                     | stop   |
+| synthetic slides (quarterly review deck)  | not citable | ✅ `citable: false` | no fields emitted                                             | 349                     | stop   |
+| synthetic invoice                         | not citable | ✅ `citable: false` | no fields emitted                                             | 400                     | stop   |
 
 ## Observed behaviors (drove/confirmed design choices)
 

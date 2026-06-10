@@ -133,8 +133,6 @@ keep_intermediates = false
 #        network; the --bibtex flag is an alias for this mode).
 # off  — no BibTeX.
 mode = "auto"
-# Legacy: a boolean `enabled = true/false` is still read as mode = "on"/"off"
-# (deprecated; `mode` wins if both are set).
 
 # When an entry is produced, prepend the BibTeX block into the generated
 # Markdown too.

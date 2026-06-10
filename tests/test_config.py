@@ -256,37 +256,6 @@ def test_bibtex_cli_overrides_config_file():
     assert rc.bibtex.mode == "on"
 
 
-def test_bibtex_legacy_enabled_alias(monkeypatch):
-    import types
-
-    from inscriber import config as config_module
-
-    warnings: list[str] = []
-    monkeypatch.setattr(
-        config_module, "logger",
-        types.SimpleNamespace(warning=lambda msg, *a: warnings.append(msg % a if a else msg)),
-    )
-    rc = resolve_config(
-        command="run", input_arg="p.pdf", config_path=None,
-        file_dict={"bibtex": {"enabled": True}}, cli_sections={},
-    )
-    assert rc.bibtex.mode == "on"
-    assert any("deprecated" in w for w in warnings)
-
-    rc = resolve_config(
-        command="run", input_arg="p.pdf", config_path=None,
-        file_dict={"bibtex": {"enabled": False}}, cli_sections={},
-    )
-    assert rc.bibtex.mode == "off"
-
-    # mode wins when both are present:
-    rc = resolve_config(
-        command="run", input_arg="p.pdf", config_path=None,
-        file_dict={"bibtex": {"enabled": True, "mode": "off"}}, cli_sections={},
-    )
-    assert rc.bibtex.mode == "off"
-
-
 def test_invalid_bibtex_mode_rejected():
     rc = RunConfig(command="run", input="p.pdf")
     rc.bibtex.mode = "always"

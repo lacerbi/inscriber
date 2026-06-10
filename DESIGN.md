@@ -12,7 +12,10 @@
 > `paper2llm`). It is written to be read entirely standalone — every concept,
 > dependency, and external quirk needed to build v1 is described here.
 >
-> **Last updated:** 2026-06-10 (§2.2/§9.7: **cropped table input VALIDATED on
+> **Last updated:** 2026-06-10 (§12/§13.1: the **legacy `[bibtex] enabled`
+> config key is removed** — pre-release, nothing in the wild to migrate;
+> `mode` is the only knob, and an `enabled` key under `[bibtex]` is now
+> ignored like any other unknown key. Earlier same day — §2.2/§9.7: **cropped table input VALIDATED on
 > real hardware and frozen** (`dev/notes/2026-06-10-cropped-table-validation.md`,
 > all 10 PriorGuide tables page-vs-crop: crop better 7 / equal 2 / worse 1;
 > both fusion-split probes and the row-drift probe fixed exactly; crops
@@ -1441,9 +1444,7 @@ append-BibTeX-to-document option (§12).
 ## 12. BibTeX (`bibtex/`)
 
 BibTeX generation is governed by **`bibtex.mode`** (CLI `--bibtex-mode`,
-default **`auto`**); a legacy `[bibtex] enabled = true/false` config key is
-read as `on`/`off` with a deprecation warning (`mode` wins if both are
-present):
+default **`auto`**):
 
 - **`off`** — no BibTeX.
 - **`on`** — the original opt-in behavior, ported from `paper2llm` and
@@ -1690,8 +1691,7 @@ keep_intermediates = false             # keep page/crop images on success
 [bibtex]
 mode = "auto"                          # auto (default: citability → source
                                        #   chain, §12) | on (--bibtex alias;
-                                       #   frozen paper2llm path) | off.
-                                       #   Legacy `enabled` maps with a warning.
+                                       #   frozen paper2llm path) | off
 append_to_document = false             # also inject (prepend, fenced) into doc
 
 [net]
@@ -1935,7 +1935,7 @@ the inference layer at the **chat-client boundary**.
 - **`test_stitch.py`** — header/footer stripping & de-hyphenation on crafted
   multi-page inputs.
 - **`test_config.py`** — TOML load, CLI-override precedence, validation errors
-  (incl. the `bibtex.mode` tri-state + legacy `enabled` alias).
+  (incl. the `bibtex.mode` tri-state).
 - **`test_bibtex.py` / `test_bibtex_probe.py` / `test_bibtex_chain.py`** — the
   §12 surface: citation key / title validation / mock fallback (`on`-mode
   parity), the probe (prompt assembly, fence-tolerant parsing, truncation,
