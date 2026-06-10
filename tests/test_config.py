@@ -56,7 +56,7 @@ def test_defaults_match_design():
     assert rc.llama.ctx_size == 16384  # headroom for the table pass (8k budget)
     assert rc.inference.mode == "sequential"
     assert rc.ocr.backend == "deepseek-ocr"
-    assert rc.ocr.resolution == "large"
+    assert rc.ocr.resolution == "gundam"  # high-quality 2048 render is the default
     assert rc.ocr.n_gpu_layers == "auto"  # GPU offload by default (DESIGN §13.1)
     assert rc.vlm.n_gpu_layers == "auto"
     assert rc.vlm.backend == "gemma"

@@ -109,15 +109,15 @@
       ]
     },
     "gundam": {
-      "target_px": 1280,
-      "zoom": 1.6,
-      "render_w_px": 960,
-      "render_h_px": 1280,
+      "target_px": 2048,
+      "zoom": 2.56,
+      "render_w_px": 1536,
+      "render_h_px": 2048,
       "expected_box_px": [
-        240.0,
-        320.0,
-        720.0,
-        832.0
+        384.0,
+        512.0,
+        1152.0,
+        1331.2
       ],
       "predicted_grid_reference": [
         250,

@@ -43,7 +43,10 @@ model = "C:/path/to/models/deepseek-ocr-bf16.gguf"
 mmproj = "C:/path/to/models/mmproj-deepseek-ocr-bf16.gguf"
 
 # tiny | small | base | large | gundam
-resolution = "large"
+# gundam (default) renders 2048 px — the model's larger saturated encoding,
+# which eliminates its systematic small-subscript misreads at ~20% extra time.
+# large (1280 px) is the faster fallback for simple documents.
+resolution = "gundam"
 
 # auto lets llama.cpp choose GPU offload. Use 0 for CPU, "all" for all layers,
 # or an explicit integer layer count.

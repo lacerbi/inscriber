@@ -16,12 +16,16 @@ from enum import Enum
 
 
 class ResolutionMode(str, Enum):
-    """DeepSeek-OCR native resolution ladder + the dense-page Gundam opt-in.
+    """DeepSeek-OCR native resolution ladder + the high-quality Gundam default.
 
     The ``long_edge_px`` is the rasterizer's render target (long edge, in px).
-    ``gundam`` was meant as the model-side tiling mode, but the pinned llama.cpp
-    build does NOT tile (dev/notes/2026-06-10-gundam-findings.md) — it is currently a strict
-    alias of ``large``; raising its render target is a pending decision (TODO.md).
+    ``gundam`` was meant as the model-side tiling mode, but llama.cpp does NOT
+    tile (dev/notes/2026-06-10-gundam-findings.md). It renders 2048 instead: any
+    input ≥1664 px triggers the model's larger saturated visual encoding (431 vs
+    283 prompt tokens), which eliminates the systematic small-subscript misreads
+    at ~20% wall-clock cost — measured in
+    dev/notes/2026-06-10-e2e-quality-findings.md §Render-size experiment, which
+    is why it is the default. ``large`` (1280) is the faster fallback.
     """
 
     TINY = "tiny"
@@ -37,7 +41,7 @@ class ResolutionMode(str, Enum):
             ResolutionMode.SMALL: 640,
             ResolutionMode.BASE: 1024,
             ResolutionMode.LARGE: 1280,
-            ResolutionMode.GUNDAM: 1280,
+            ResolutionMode.GUNDAM: 2048,
         }[self]
 
 
@@ -152,7 +156,7 @@ class OcrConfig:
     backend: str = "deepseek-ocr"
     model: str = ""
     mmproj: str = ""
-    resolution: str = "large"  # tiny | small | base | large | gundam
+    resolution: str = "gundam"  # tiny | small | base | large | gundam (default: gundam)
     # -ngl for the OCR server: "auto" (let llama.cpp fit as many layers as VRAM
     # allows — its own default), "all", or an explicit integer. 0 forces CPU.
     n_gpu_layers: int | str = "auto"

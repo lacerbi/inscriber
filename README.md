@@ -145,7 +145,7 @@ has a matching flag. Highlights:
 
 | flag                                                          | meaning                                                       |
 | ------------------------------------------------------------- | ------------------------------------------------------------- |
-| `--ocr-resolution {tiny,small,base,large,gundam}`             | OCR render quality (default `large`; `gundam` for dense pages) |
+| `--ocr-resolution {tiny,small,base,large,gundam}`             | OCR render quality (default `gundam`, 2048px; `large` is faster) |
 | `--figure-mode {describe-only,describe-and-keep,placeholder}` | how figures render                                            |
 | `--no-figures`                                                | skip figure detection and description entirely                |
 | `--no-table-refine`                                           | keep raw OCR tables (skip VLM restructuring)                  |
@@ -159,9 +159,11 @@ has a matching flag. Highlights:
 GPU offload is automatic by default (`n_gpu_layers = "auto"` lets llama.cpp fit
 as many layers into VRAM as it can); override per server with `--ocr-ngl` /
 `--vlm-ngl` (`all`, `0` for CPU, or a layer count). `--ocr-resolution` is the
-main speed/quality lever. `--ctx` (default 16384) sizes the context window that
-prompt and generation share — complex tables need headroom for the VLM's
-reasoning, so don't shrink it without reason.
+main speed/quality lever: the `gundam` default renders pages at 2048px, which
+measurably reduces OCR misreads of small subscripts and digits; `--ocr-resolution
+large` is ~20% faster and fine for simple documents. `--ctx` (default 16384)
+sizes the context window that prompt and generation share — complex tables need
+headroom for the VLM's reasoning, so don't shrink it without reason.
 
 ## Privacy / offline
 

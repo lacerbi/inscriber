@@ -12,7 +12,13 @@
 > `paper2llm`). It is written to be read entirely standalone — every concept,
 > dependency, and external quirk needed to build v1 is described here.
 >
-> **Last updated:** 2026-06-10 (§12: **BibTeX is now mode-driven, default
+> **Last updated:** 2026-06-10 (§2.2/§7/§13/§19: **`gundam` now renders 2048 px
+> and is the DEFAULT resolution** — the saturated ≥1664px encoding eliminates
+> the systematic small-subscript misreads at ~20% wall-clock cost, measured on
+> real probe pages (`dev/notes/2026-06-10-e2e-quality-findings.md`
+> §Render-size experiment, which also found **`table[[…]]` grounding boxes on
+> 9587** — unblocking the cropped-table TODO item); `large` (1280) stays as the
+> faster fallback. Also same day — §12: **BibTeX is now mode-driven, default
 > `auto`** — citability via repository provenance or a cached local VLM probe,
 > then a source chain: S2-by-arXiv-ID (prefers the published version) → arXiv
 > export API → S2 title search → local best-effort; `--bibtex-mode` with
@@ -199,16 +205,19 @@ So **every** model `inscriber` uses (OCR and VLM) is configured as a
     plus a dynamic tiling mode informally called **"Gundam"** (multiple ~640px
     tiles **plus** a 1024px global view) — highest quality, slowest, best for
     dense/multi-column pages. There is **no "standard" mode** (an earlier draft
-    invented one). `inscriber` **defaults to `large`**, exposes the full ladder,
-    and `gundam` as the dense-page opt-in (§7, §13). See §7 for the mode→render
-    mapping. ✅ **Confirmed (2026-06-10): neither build 9028 nor 9587 tiles**
+    invented one). `inscriber` **defaults to `gundam`, rendering 2048 px** —
+    inputs ≥1664 px trigger the model's larger **saturated** encoding (431 vs
+    283 prompt tokens on 9587), which measurably **eliminates the systematic
+    small-subscript misreads** (`θ_t→θ_i`, `p_train→p_min`, `Fail→Full`) at
+    ~20% wall-clock cost (`dev/notes/2026-06-10-e2e-quality-findings.md`
+    §Render-size experiment); `large` (1280 px) is the faster fallback, and
+    the full ladder is exposed (§7, §13). See §7 for the mode→render mapping.
+    ✅ **Confirmed (2026-06-10): neither build 9028 nor 9587 tiles**
     (`dev/notes/2026-06-10-gundam-findings.md`, `dev/notes/2026-06-10-build-9587-verification.md`) —
     every input is encoded as one slice (vision tokens saturate for ≥1664 px
-    long edge: 421 vs 273 at 1280 on 9028; 431 vs 283 on 9587), so `gundam`
-    (rendering 1280, like `large`) is currently a **strict alias of `large`**,
-    and the grounding frame is the same at every input size. Whether gundam
-    should render ≥1664 to buy the larger encoding is a pending decision
-    (`TODO.md`).
+    long edge), the grounding frame is the same at every input size, and true
+    multi-tile encoding remains pending upstream
+    (`dev/notes/2026-06-10-upstream-watch.md` §1).
 
 > ✅ **Grounding format & coordinate frame (CONFIRMED on build 9587 —
 > `dev/notes/2026-06-10-build-9587-verification.md`; format originally established in M1a
@@ -598,8 +607,8 @@ Responsibilities:
   | `tiny`   | 512px                                         | fastest, lowest quality                                                                                            |
   | `small`  | 640px                                         |                                                                                                                    |
   | `base`   | 1024px                                        |                                                                                                                    |
-  | `large`  | **1280px (default)**                          | balanced; good for most papers                                                                                     |
-  | `gundam` | render high-res (currently 1280px) | ⚠️ the pinned build does **not** tile (§2.2) — gundam ≡ `large` today; raising its render target to ≥1664 (saturated 421-token encoding) is a pending decision (`TODO.md`) |
+  | `large`  | 1280px                                        | faster fallback; fine for simple documents                                                                         |
+  | `gundam` | **2048px (default)**               | the model's larger saturated encoding (≥1664 px input): fixes the systematic small-subscript misreads at ~20% extra wall-clock (§2.2; `dev/notes/2026-06-10-e2e-quality-findings.md`). No model-side tiling on this build — one slice at any size. |
 
 - Return `[PageImage(page_number, png_bytes, width_px, height_px)]`. The
   `(width_px, height_px)` are the **original rendered page** dimensions and are
@@ -1516,7 +1525,9 @@ mode = "sequential"                    # "sequential" | "concurrent"
 backend = "deepseek-ocr"               # v1: deepseek-ocr only (others §22.1)
 model = "/models/deepseek-ocr-f16.gguf"
 mmproj = "/models/mmproj-deepseek-ocr-f16.gguf"
-resolution = "large"                   # tiny | small | base | large | gundam
+resolution = "gundam"                  # tiny | small | base | large | gundam;
+                                       #   gundam (default) renders 2048px (§7) —
+                                       #   large (1280px) is the faster fallback
 n_gpu_layers = "auto"                  # -ngl for the OCR server (per-server):
                                        #   "auto" (default; llama.cpp fits VRAM) |
                                        #   "all" | integer (0 = CPU)
@@ -1856,9 +1867,10 @@ llama.cpp over HTTP.
 - **DeepSeek-OCR at f16 + a Gemma 4 VLM** are the main memory consumers. The
   **sequential** mode (§5.4) keeps only one resident at a time — the default for
   good reason.
-- **Resolution** is the main speed/quality lever: `large` (default) is a good
-  balance; `gundam` (model-side tiling) is best for dense two-column papers but
-  noticeably slower; `base`/`small`/`tiny` are the speed escape hatches.
+- **Resolution** is the main speed/quality lever: `gundam` (default, 2048px —
+  the saturated encoding, ~20% slower than `large` wall-clock) measurably
+  reduces subscript/word misreads; `large` (1280px) is the faster fallback;
+  `base`/`small`/`tiny` are the speed escape hatches.
 - **Caching** (§8.6/§9.6) makes iteration cheap — changing split/figure/bibtex
   options re-runs in seconds because OCR and VLM results are reused.
 - **GPU offload** via `-ngl` is the biggest wall-clock win when available; left

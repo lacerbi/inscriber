@@ -8,27 +8,6 @@ Legend: `[ ]` todo · `[!]` blocked.
 
 ## Pending real-hardware verifications
 
-- [ ] **Gundam render target** (`dev/notes/2026-06-10-gundam-findings.md`,
-      `dev/notes/2026-06-10-build-9587-verification.md`): neither build 9028 nor 9587
-      tiles, so gundam is currently a strict alias of `large` (both render
-      1280). Rendering ≥1664 buys the saturated visual encoding (431 vs 283
-      prompt tokens on 9587; ~3× encode time). Decide whether
-      `ResolutionMode.GUNDAM.long_edge_px` becomes 2048 — validate OCR quality
-      on dense pages first; concrete probes now exist in
-      `dev/notes/2026-06-10-e2e-quality-findings.md` (equation-tag collapse, table digit
-      errors like `9346.6→346.6` / `Fail→Full` — re-run those pages at ≥1664
-      and diff). (The coordinate frame itself is resolved: per-axis on ≥9587
-      at every input size, golden-tested.) Consider simply waiting for
-      upstream v1 tiling instead (`dev/notes/2026-06-10-upstream-watch.md` §1) — real
-      tiling would change the question's shape entirely.
-- [ ] **Equation-number tag collapse in multi-row arrays** — DeepSeek keeps
-      only one `(N)` tag per `\begin{array}` block (~8 arrays affected in one
-      real paper; content otherwise faithful —
-      `dev/notes/2026-06-10-e2e-quality-findings.md` §Equations). Vision-level: the tags
-      are absent from the raw output, so no text post-processing can recover
-      them. Decide: accept as a documented limitation (the transcription
-      notice already warns about equations), or test whether a ≥1664 render
-      preserves the tags (fold into the gundam render-target probe above).
 - [ ] **OCR loop/truncation detection** (`dev/notes/2026-06-10-equation-fidelity-findings.md`):
       a real page looped at BF16 + grounded prompt + DRY and was **silently
       cached** with half its text missing — `DeepSeekOcrBackend.ocr_page` never
@@ -42,13 +21,23 @@ Legend: `[ ]` todo · `[!]` blocked.
 
 ## Table-restructuring pass (DESIGN §9.7)
 
-- [!] **Cropped table input** for crisper headers (Gemma downscales the whole
-  page to ~896px, losing small header glyphs) — blocked: DeepSeek does not
-  ground tables with boxes, so there is no clean table bbox to crop to
-  (`dev/notes/2026-06-10-table-reconstruction-findings.md` §Notes). The cost is now
-  quantified: 5 of 10 tables on a real paper carry structure damage,
-  concentrated in dense multi-header layouts
-  (`dev/notes/2026-06-10-e2e-quality-findings.md` §Tables).
+- [ ] **Cropped table input** for crisper VLM reading — **UNBLOCKED
+      2026-06-10 and the top table-quality item.** The blocker ("DeepSeek does
+      not ground tables with boxes",
+      `dev/notes/2026-06-10-table-reconstruction-findings.md` §Notes) was a
+      build-9028 fact: **on 9587 DeepSeek emits `table[[bbox]]` +
+      `table_caption[[bbox]]` regions, at 1280 and 2048 alike**
+      (`dev/notes/2026-06-10-e2e-quality-findings.md` §Render-size experiment).
+      Sketch: parser keeps table regions (additive — unknown labels already
+      pass through); crop the table bbox (+padding) from the page raster —
+      now 2048px by default — and send the crop to the VLM instead of the
+      whole ~896px-downscaled page; mirrors the figure-crop path; cache keys
+      on the crop hash; bundle already carries table-page rasters. Motivation
+      is quantified: 5 of 10 tables on a real paper carried structure damage,
+      and the digit-fusion/segmentation errors (`159.99346.6…` splits,
+      `1010` cell merges) are NOT resolution-sensitive — a crisp crop the
+      VLM can actually read is the remaining lever. Validate prompt shape on
+      real hardware (§9.7 pinned-prompt rule).
 - [ ] **Guard against silent structure damage** in restructured tables —
       the worst observed failure is a syntactically clean table that silently
       dropped an entire column group (Table 1 in

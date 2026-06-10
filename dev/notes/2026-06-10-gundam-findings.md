@@ -1,6 +1,6 @@
 # Gundam-mode findings — coordinate frame & tiling
 
-> **Date:** 2026-06-10 · **Status:** superseded in part — no-tiling was re-confirmed on ≥9587, but the padded-square frame measured here is build-9028-scoped (per-axis on ≥9587: `2026-06-10-build-9587-verification.md`).
+> **Date:** 2026-06-10 · **Status:** superseded in part — no-tiling was re-confirmed on ≥9587, but the padded-square frame measured here is build-9028-scoped (per-axis on ≥9587: `2026-06-10-build-9587-verification.md`). The render-target question this note opened is **decided**: gundam renders 2048 and is the **default** (`2026-06-10-e2e-quality-findings.md` §Render-size experiment).
 
 > Closes the TODO item *"Gundam coordinate frame: determine empirically whether
 > grounding coords are relative to the 1024 global view or the tiles."*

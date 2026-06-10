@@ -99,14 +99,20 @@ with wrong shape · 5 with real damage.** Two distinct failure layers:
    wrong); A3/A4: SIR rows shifted one column; A7/A8: spurious columns from
    multi-level headers.
 
-**(a) OCR digit damage (DeepSeek-side, present in the blob before the VLM):**
+**(a) OCR digit damage (attribution CORRECTED by the §Render-size experiment
+below — most of these are cell-fusion + VLM-segmentation failures, not OCR
+misreads; the raw blobs contain the correct digits, fused):**
 
 - Dropped leading digits: `9346.6 → 346.6`, `8300.4 → 830.4` (A8),
-  `1.03 → 0.03`, `0.82 → 0.02` (Table 1).
-- Digit duplication: `10 → 1010`, `20 → 2020` (A1 `dim(x)`).
-- `Fail → Full` ×6 (A4/A5) — meaning-flipping.
-- `#GMM components` `2/20/200 → 2/5/10` (A7) — corrupts the ablation's
-  independent variable.
+  `1.03 → 0.03`, `0.82 → 0.02` (Table 1) — blob has `…159.99346.68300.4…`:
+  values correct but fused; the VLM picked the wrong split.
+- Digit duplication: `10 → 1010`, `20 → 2020` (A1 `dim(x)`) — actually TWO
+  adjacent correct cells fused (`dim(θ)=10|dim(x)=10`); the VLM failed to
+  split them.
+- `Fail → Full` ×6 (A4/A5) — meaning-flipping; genuine OCR misread (fixed at
+  2048, see below).
+- `#GMM components` `2/20/200 → 2/5/10` (A7) — blob holds the correct
+  `2/20/200` fused into neighboring values; VLM segmentation failure.
 
 **Takeaway:** simple tables come through clean; wide/dense multi-header
 appendix tables exceed what Gemma can resolve from the whole page downscaled
@@ -116,3 +122,63 @@ important sense — **no hallucinated values** — but "looks clean" is no
 guarantee of completeness (Table 1). New TODO items filed: a guard against
 silent structure damage; the equation-tag/table question also feeds the
 gundam render-target decision (more vision tokens may help both).
+
+## Render-size experiment — 1280 vs 2048 (same day; decided the gundam default)
+
+The findings above handed us deterministic probes; the gundam render-target
+question ("does the ≥1664px saturated encoding — 431 vs 283 prompt tokens —
+actually improve OCR?") was answered by re-OCR'ing the 10 known-bad pages
+(3, 5, 9, 20, 21, 22, 27, 33, 36, 37) at a 2048 render via
+`gundam_check.py --paper … --paper-page 3,5,…` (now multi-page), and diffing
+against the 1280 baselines pulled from the run's cache by exact key
+recomputation. All 2048 pages: `finish_reason: stop`, no loops, ~33 s/page
+vs ~28 s at 1280 (**~20% wall-clock — decode dominates; the ~3× encode is
+only a few seconds**).
+
+| probe (truth) | 1280 | 2048 |
+| --- | --- | --- |
+| `θ_t→θ_i` subscript swaps (p20+21) | 36 | **0** |
+| `p_train→p_min` (p21 B.2 + p27 header) | 9 | **0** |
+| `Fail→Full` (p33) | 12 | **0** |
+| Eq (4) `σ(t)²I` (p3) | `σ(t)zI` | **exact** |
+| p33 C2ST `0.55→0.53` cell | wrong | **exact** |
+| Eq (A22) denominator (p22) | dropped, 34× `\qquad` | **restored** (one 18-`\qquad` filler row remains) |
+| Eq (9) duplicated array row (p5) | present | gone (but see below) |
+| `Σ̃→S̃` swap (p21) | 19 | 21 (unchanged) |
+| equation-number tags (p22) | 5 | 3 (no better; p5's array tag shifted (9)→(8)) |
+| table cell fusion (p27/36/37 blobs) | fused | **byte-similar — unchanged** |
+
+Eq (9)'s triple-underbrace stays garbled either way, just differently at
+2048 (duplicated row gone; the "prior ratio" label returns but lands inside
+the fraction; array tag wrong). So: **resolution fixes the systematic
+small-glyph misreads — the dominant error class — and does nothing for
+tag collapse or cell fusion.**
+
+**Two attribution corrections** (folded into §Tables above): the "dropped
+leading digits" and "digit duplication" table errors are NOT OCR misreads —
+the raw blobs contain every correct digit, fused without delimiters
+(`Turin159.99346.68300.4…`, `10D1010` = `10|10`); the VLM restructuring
+picks a wrong segmentation. Identical fusion at 2048.
+
+**Discovery — `table[[bbox]]` grounding exists on 9587:** the 2048 outputs
+emit `table[[…]]` + `table_caption[[…]]` regions, and re-grepping the 1280
+baselines shows them there too (1–3 per table page). The
+"DeepSeek does not ground tables with boxes" fact
+(`2026-06-10-table-reconstruction-findings.md` §Notes) was build-9028 truth.
+This unblocks the cropped-table-input TODO item — which is also the right
+attack on the fusion/segmentation errors that resolution cannot touch.
+
+**Decisions taken (2026-06-10):**
+
+1. **`ResolutionMode.GUNDAM.long_edge_px` = 2048, and `gundam` is the new
+   default resolution** (`large` 1280 = the faster fallback). DESIGN
+   §2.2/§7/§13/§19, README, config templates updated.
+2. **Equation-tag collapse: accepted as a documented limitation** (not
+   resolution-sensitive; vision-level; not text-recoverable; the
+   transcription notice already warns).
+3. **Cropped-table-input unblocked** — re-filed in `TODO.md` with a design
+   sketch (crop the table bbox from the now-2048 raster; mirrors the
+   figure-crop path).
+
+Raw artifacts: `out-gundam/paper_pN_2048_raw.txt` + `out-check/raw1280/`
+(both gitignored, ephemeral; key evidence quoted above).

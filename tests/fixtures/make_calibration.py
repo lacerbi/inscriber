@@ -34,7 +34,7 @@ MODES = {
     "small": 640,
     "base": 1024,
     "large": 1280,
-    "gundam": 1280,
+    "gundam": 2048,
 }
 
 
