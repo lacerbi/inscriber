@@ -1,9 +1,9 @@
 """BibTeX auto-mode source chain (DESIGN §12; PLAN-bibtex-auto B3).
 
 httpx is mocked; every chain order / fall-through / degrade path is exercised,
-plus pipeline-level provenance behavior (online + repository URL never calls
-the probe; describe reads provenance from the bundle; run and describe share
-the probe cache).
+plus pipeline-level provenance behavior (the probe always runs in auto mode —
+even with a repository URL — so best-effort survives online failures; describe
+reads provenance from the bundle; run and describe share the probe cache).
 """
 
 from __future__ import annotations
@@ -398,7 +398,9 @@ def _mock_inference(monkeypatch, *, probe_response):
     return probe_calls
 
 
-def test_run_with_arxiv_url_never_calls_probe(tmp_path, monkeypatch, hermetic_cache, fake_http):
+def test_run_with_arxiv_url_probes_but_prefers_s2_by_id(
+    tmp_path, monkeypatch, hermetic_cache, fake_http
+):
     routes, _ = fake_http
     routes[S2_BY_ID] = _Resp(json_data=S2_PUBLISHED)
     probe_calls = _mock_inference(monkeypatch, probe_response='{"citable": true}')
@@ -415,10 +417,48 @@ def test_run_with_arxiv_url_never_calls_probe(tmp_path, monkeypatch, hermetic_ca
     cfg = _auto_cfg(tmp_path, out, input_arg=ARXIV_URL)
     written = pipeline.run(cfg)
 
-    assert probe_calls == []  # provenance recognized → no VLM probe call
+    # The probe always runs (its metadata backs best-effort if online sources
+    # fail at lookup time), but the by-ID source still wins the chain.
+    assert len(probe_calls) == 1
     bib = out / "arxiv-2510_18234v2.bib"
     assert str(bib) in written
     assert bib.read_text(encoding="utf-8").startswith("@article{vaswani2017attention,")
+
+
+def test_run_provenance_with_rate_limited_s2_falls_back_to_best_effort(
+    tmp_path, monkeypatch, hermetic_cache, fake_http
+):
+    """The regression behind always-probing: a repository URL with no arXiv ID
+    (OpenReview) + a rate-limited Semantic Scholar exhausts every online
+    source; the probe's metadata — collected while the VLM was still up — is
+    all that's left for best-effort."""
+    routes, _ = fake_http
+    routes[S2_SEARCH] = _Resp(status_code=429)
+    full_json = (
+        '{"citable": true, "title": "A Sample Paper", '
+        '"authors": ["Ada B"], "year": "2026"}'
+    )
+    probe_calls = _mock_inference(monkeypatch, probe_response=full_json)
+
+    pdf_bytes = (FIXTURES / "sample_paper.pdf").read_bytes()
+    openreview_url = "https://openreview.net/pdf?id=G4I23g5Ugh"
+    monkeypatch.setattr(
+        pipeline, "resolve_input",
+        lambda *a, **k: ResolvedInput(
+            pdf_bytes=pdf_bytes, source="url", original_url=openreview_url,
+            suggested_name="openreview-G4I23g5Ugh",
+        ),
+    )
+    out = tmp_path / "out"
+    cfg = _auto_cfg(tmp_path, out, input_arg=openreview_url)
+    written = pipeline.run(cfg)
+
+    assert len(probe_calls) == 1  # probed despite recognized provenance
+    bib = out / "openreview-G4I23g5Ugh.bib"
+    assert str(bib) in written
+    content = bib.read_text(encoding="utf-8")
+    assert content.startswith("% NOTE: Best-effort entry")
+    assert "title={A Sample Paper}" in content
 
 
 def test_describe_reads_provenance_from_bundle(tmp_path, monkeypatch, hermetic_cache, fake_http):
@@ -441,7 +481,9 @@ def test_describe_reads_provenance_from_bundle(tmp_path, monkeypatch, hermetic_c
     dcfg = _auto_cfg(tmp_path, out, command="describe", input_arg=str(bundle_dir))
     written = pipeline.describe(dcfg)
 
-    assert probe_calls == []  # provenance read from the bundle manifest
+    # One probe call (describe always probes in auto mode); the @article below
+    # proves the chain got the arXiv URL from the bundle manifest's provenance.
+    assert len(probe_calls) == 1
     bib = out / "arxiv-paper.bib"
     assert str(bib) in written
     assert "@article{vaswani2017attention," in bib.read_text(encoding="utf-8")

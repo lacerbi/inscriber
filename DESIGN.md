@@ -1523,10 +1523,15 @@ default **`auto`**):
    (after the figure pass — the server is torn down before the BibTeX step),
    cache-first in the shared VLM store (`make_bibtex_probe_key`,
    `"kind": "bibtex-probe"`; the key embeds the post-refine page text, so
-   table-pass settings are deliberately key material), and **when online
-   provenance already settles citability the probe is skipped entirely** (no
-   VLM call — the by-ID/title sources don't need it; offline still probes,
-   because best-effort needs the metadata).
+   table-pass settings are deliberately key material), and it runs **even
+   when provenance already settles citability** (one cheap, cached,
+   text-only call): whether the online sources will fail at lookup time is
+   unknowable before the server is torn down, and the best-effort link (step
+   4 below) can only use metadata collected here. (Observed failure of the
+   earlier skip-on-provenance optimization: an OpenReview input — citable by
+   provenance, no arXiv ID — hit a Semantic Scholar 429 on the title search,
+   exhausting every online source with no probe metadata to fall back on →
+   `no usable metadata` despite a perfectly readable first page.)
 3. No provenance and no positive probe → **abstain** (a visible INFO line,
    never a silent skip — and never an unwanted `.bib`).
 

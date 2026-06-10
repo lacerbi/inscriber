@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from inscriber.bibtex.chain import citable_provenance, generate_bibtex_auto
+from inscriber.bibtex.chain import generate_bibtex_auto
 from inscriber.bibtex.probe import ProbeResult, parse_probe_response
 from inscriber.bibtex.semantic_scholar import generate_bibtex
 from inscriber.bundle import bundle_dir_for, read_bundle, write_bundle
@@ -701,22 +701,20 @@ def _vlm_describe(
 
 
 def _bibtex_probe(
-    cfg: RunConfig, pages: list[_Page], session: _VlmSession, original_url: str | None
+    cfg: RunConfig, pages: list[_Page], session: _VlmSession
 ) -> ProbeResult | None:
     """The BibTeX citability/metadata probe (DESIGN §12, auto mode).
 
     Runs INSIDE the open VLM session (after the figure pass) because the server
-    is torn down before ``_bibtex_outputs`` runs. Cache-first like every VLM
-    pass; a failed/truncated/unparseable probe is treated as "citability
-    unknown" and is never cached. Never fails the run.
+    is torn down before ``_bibtex_outputs`` runs. For that same reason it runs
+    even when repository provenance already settles citability: whether the
+    online sources will fail at lookup time (e.g. Semantic Scholar
+    rate-limiting) is unknowable now, and the best-effort fallback can only
+    use metadata collected here — by lookup time the server is gone.
+    Cache-first like every VLM pass; a failed/truncated/unparseable probe is
+    treated as "citability unknown" and is never cached. Never fails the run.
     """
     if cfg.bibtex.mode != "auto" or not pages:
-        return None
-    # Recognized repository provenance settles citability, and when online the
-    # by-ID/S2 sources don't need the probe's metadata either — skip the VLM
-    # call entirely. (Offline still probes: best-effort needs the metadata.)
-    if not cfg.net.offline and citable_provenance(original_url):
-        logger.info("BibTeX (auto): provenance recognized; probe skipped")
         return None
     if not _vlm_configured(cfg):
         logger.warning(
@@ -983,7 +981,7 @@ def describe(cfg: RunConfig) -> list[str]:
             tables_refined = _refine_tables(cfg, pages, session)
             if figures_need_vlm:
                 descriptions = _vlm_describe(cfg, pages, bundle.dir, session)
-            probe = _bibtex_probe(cfg, pages, session, bundle.original_url)
+            probe = _bibtex_probe(cfg, pages, session)
         finally:
             session.close()
         full_md = _assemble(cfg, pages, descriptions)
@@ -1019,7 +1017,7 @@ def _run_body(cfg: RunConfig, resolved, base, out_dir, work, *, vlm_endpoint=Non
         tables_refined = _refine_tables(cfg, working, session)
         if figures_need_vlm:
             descriptions = _vlm_describe(cfg, working, work, session)
-        probe = _bibtex_probe(cfg, working, session, resolved.original_url)
+        probe = _bibtex_probe(cfg, working, session)
     finally:
         session.close()
     full_md = _assemble(cfg, working, descriptions)
