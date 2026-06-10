@@ -56,6 +56,45 @@ Three ingredients, each added after a failed simpler version:
    placeholders stripped) so the caption/body can supply correct spellings for
    merged header labels. Fixes labels that appear in the prose; inert otherwise.
 
+### Verbatim prompt (the working example)
+
+Assembled per table; `{…}` are runtime substitutions. The image content-part is
+sent **before** this text (`image_first=True`); sampling `temperature: 0`,
+`max_tokens` ~8192 (complex tables need room for the thinking model's reasoning
+plus the answer).
+
+```text
+You are reconstructing ONE table from a scientific paper as clean GitHub-flavored Markdown.
+
+{locator}
+
+You are given the page image, the rest of the page's text as context, and a raw OCR transcription of that table. The OCR is generally accurate but NOT perfect: it may have MERGED adjacent labels or values that run together, and the table may be IRREGULAR (column groups with different numbers of sub-columns).
+
+Guidelines:
+- Use the IMAGE to determine the true structure: the real columns and rows, and any grouped/multi-level headers (represent column groups with a second header row).
+- Use the PAGE TEXT to resolve ambiguous or run-together labels: the caption and surrounding prose usually spell out the correct column/row names and what the rows and columns mean. Prefer those spellings when fixing merged labels.
+- When you are CERTAIN, fix clear OCR mistakes: split labels or values the OCR ran together and place them in the correct cells. Do not invent unsupported data.
+- Keep irregular groups as they are; never drop or merge values to look uniform.
+- Preserve each value's exact formatting (e.g. "2.57 (0.020)").
+- Output ONLY the markdown table. No commentary.
+
+Page text (context):
+<page_text>
+{the page's DeepSeek Markdown with <table> blobs and ⟦INSCRIBER_FIG:…⟧ placeholders removed}
+</page_text>
+
+Raw OCR of the table:
+{the DeepSeek <table>…</table> blob for this table}
+```
+
+`{locator}` is, depending on how many `<table>` blobs the page has:
+
+- multiple: `This page contains {N} tables; reconstruct the {ordinal} table (the one whose values match the OCR text below).`
+- single: `This page contains a single table; reconstruct it.`
+
+This is the prompt that produced the correct 11-column / 3-level-header Table A6
+reconstruction (33/33 values, `Jena`/`Cali.` split correctly).
+
 ### What it achieves (over Tables 1, A6, A7 of the test paper)
 
 - **Data values: reliably correct** — 63/63 across a flat table, a 2-level-header
