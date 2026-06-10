@@ -155,8 +155,8 @@ tables cannot express colspan).
 - Bold significance markers in Tables 1, 2, A2 are not reproduced (the OCR
   blobs carry no emphasis, and bolding could not be read reliably off the
   page scans during verification). **Recovering bold is wanted** — marginally
-  important, tracked in TODO.md; a transcription that restores it correctly
-  should be folded into the gold.
+  important; a transcription that restores it correctly should be folded
+  into the gold.
 - Appendix B multi-line derivations have collapsed equation labels (e.g. one
   block tagged `(A9)` spans (A6)–(A10); `(A24)` spans (A22)–(A25)), so text
   references like Eq. (A25)/(A29)/(A35) point into unlabeled blocks. Content

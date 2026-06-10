@@ -50,9 +50,8 @@ OpenReview URL above when needed.
      that gets them *right* beats the gold (update the gold and log it):
      - **Bold significance markers in tables** — wanted, not don't-care:
        the captions ("Significantly best results … in bold") currently
-       dangle. Marginally important, but recovering bold from the table
-       crops would be a real win — score correct bold recovery as a plus,
-       never as diff noise (tracked in TODO.md).
+       dangle. Marginally important, but recovering bold would be a real
+       win — score correct bold recovery as a plus, never as diff noise.
      - Appendix-B multi-line derivations have collapsed per-line equation
        labels.
      - Table A8's colspan header is flattened.

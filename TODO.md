@@ -28,16 +28,6 @@ Legend: `[ ]` todo · `[!]` blocked.
       a system message → llama-server prefix-cache reuse, possible adherence
       gain). The validated prompt is a single user message — re-validate on
       real hardware before adopting.
-- [ ] **Recover bold emphasis in restructured tables** — marginally important
-      but wanted. DeepSeek-OCR's `<table>` blobs carry no emphasis, so
-      "Significantly best results … in bold" captions dangle in the output;
-      the VLM *does* see the table crop where bolding is visible, so a
-      prompt-level instruction to transcribe bold cells as `**…**` is the
-      natural shape (pinned prompt, §9.7 — re-validate on real hardware
-      before touching; also decide how the digit-coverage guard treats the
-      added `**` characters). Reference target: Tables 1/2/A2 in
-      `dev/benchmarks/openreview-G4I23g5Ugh/` (the gold lacks bold; fold it
-      in once recovered).
 
 ## Upstream llama.cpp watch (researched 2026-06-10 — `dev/notes/2026-06-10-upstream-watch.md`)
 
