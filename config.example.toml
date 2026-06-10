@@ -34,8 +34,9 @@ mode = "sequential"
 [ocr]
 backend = "deepseek-ocr"
 
-# REQUIRED unless ocr.endpoint is set: DeepSeek-OCR model + multimodal projector.
-# Use BF16/F16 weights when possible; avoid Q4_K_M for DeepSeek-OCR.
+# REQUIRED unless ocr.endpoint is set: DeepSeek-OCR model + multimodal projector
+# (download links in README.md). BF16 recommended; Q8_0 also verified working.
+# Avoid Q4_K_M for DeepSeek-OCR — it causes runaway repetition loops.
 model = "C:/path/to/models/deepseek-ocr-bf16.gguf"
 mmproj = "C:/path/to/models/mmproj-deepseek-ocr-bf16.gguf"
 
@@ -53,9 +54,10 @@ endpoint = ""
 [vlm]
 backend = "gemma"
 
-# REQUIRED unless vlm.endpoint is set: Gemma text model + multimodal projector.
-model = "C:/path/to/models/gemma-4-E4B-it-Q4_K_M.gguf"
-mmproj = "C:/path/to/models/mmproj-gemma-4-E4B-it.gguf"
+# REQUIRED unless vlm.endpoint is set: Gemma text model + multimodal projector
+# (download links in README.md; "mmproj-BF16.gguf" is unsloth's verbatim filename).
+model = "C:/path/to/models/gemma-4-E4B-it-qat-UD-Q4_K_XL.gguf"
+mmproj = "C:/path/to/models/mmproj-BF16.gguf"
 
 n_gpu_layers = "auto"
 
