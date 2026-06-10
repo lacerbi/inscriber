@@ -1,13 +1,19 @@
 # inscriber — Design Document
 
-> **Status:** Design / pre-implementation. No code exists yet. This document is
-> the authoritative specification for the first implementation.
+> **Status:** Implemented (v1 complete per `PLAN-inscriber-v1.md`); this document
+> is the **authoritative, living specification** and is kept in sync with the
+> code. Where the original pre-implementation draft made assumptions that real
+> hardware later contradicted, the text below states the **confirmed** behavior
+> directly; the empirical evidence records live in `dev/docs/`
+> (`M1A-FINDINGS.md` for the OCR facts in §2.1–2.2/§8.3,
+> `table-reconstruction-findings.md` for §9.7).
 >
 > **Audience:** A developer who has never seen this project (or its sibling,
 > `paper2llm`). It is written to be read entirely standalone — every concept,
 > dependency, and external quirk needed to build v1 is described here.
 >
-> **Last updated:** 2026-06-10 (added §9.7 — VLM table restructuring)
+> **Last updated:** 2026-06-10 (added §9.7 — VLM table restructuring; aligned
+> §2.1–2.2, §8.3, §25 with the M1a-confirmed facts)
 
 ---
 
@@ -90,19 +96,23 @@ llama.cpp exposes multimodal (vision) inference two ways, both relevant here:
   ⚠️ note below and §8.2), because the server image path has had model-specific
   bugs.
 
-> ⚠️ **Verify the server image path for DeepSeek-OCR before committing to it.**
-> There is an open llama.cpp issue (#21022) where submitting an image to
-> DeepSeek-OCR through `llama-server` fails in tokenization
-> ("number of bitmaps (1) does not match number of markers (0)"), while
-> `llama-mtmd-cli` processes the _same_ model correctly. **M1a (§21) must gate on
-> proving a base64 image round-trips through `/v1/chat/completions` on the pinned
-> llama.cpp build.** If it is still broken on the target build, fall back to
-> driving `llama-mtmd-cli` (one-shot, accept the reload cost). Because that
-> fallback is **not HTTP**, the inference path is abstracted behind an
-> `Inferencer` (HTTP-server impl + mtmd-cli-subprocess impl, §8.2) that backends
-> call — the server `ChatClient` is just one `Inferencer`. The VLM image path
-> (Gemma 4 base64 over `/v1/chat/completions`) is a _separate, lower-risk_
-> round-trip and gets its own M1a confirmation.
+> ✅ **Resolved (M1a, build 9028 — `dev/docs/M1A-FINDINGS.md` Q1).** A base64
+> image **round-trips successfully** through DeepSeek-OCR via `llama-server`
+> `/v1/chat/completions` — llama.cpp issue #21022 ("number of bitmaps (1) does
+> not match number of markers (0)") does **not** affect this build. **v1 ships
+> the `llama-server` HTTP path.** The Gemma 4 VLM round-trip over the same path
+> is likewise confirmed. The `llama-mtmd-cli` fallback **crashes on this build**
+> (`STATUS_STACK_BUFFER_OVERRUN` during warmup); because the fallback is not
+> HTTP, the inference path stays abstracted behind an `Inferencer` (HTTP-server
+> impl + mtmd-cli-subprocess impl, §8.2) — `MtmdCliInferencer` remains as a
+> documented, currently-broken fallback should a future build regress the server
+> path.
+>
+> ⚠️ **One ordering requirement the OpenAI shape doesn't suggest:** DeepSeek-OCR
+> grounding **only activates when the image content-part precedes the text
+> prompt** (M1a Q1b). Text-first silently degrades to plain markdown with zero
+> layout boxes. `ChatClient.chat_image(image_first=True)` is the default for
+> this reason.
 
 A multimodal model in llama.cpp is **two files**:
 
@@ -145,13 +155,12 @@ So **every** model `inscriber` uses (OCR and VLM) is configured as a
     _is_ used (the upstream examples pass `--chat-template deepseek-ocr --temp 0`
     to mtmd-cli). So the template choice is **per-path** — see `chat_template(path)`
     in §8.2, not a flat bool. M1 should confirm the server path's behavior.
-  - **Prompt.** The documented, recommended grounding prompt is
-    **`<|grounding|>Convert the document to markdown.`** — upstream calls it the
-    most complete/accurate mode and the only one that reliably handles
-    multi-column layouts. (`<|grounding|>OCR` was also reported working in the
-    llama.cpp guide; `OCR` / `OCR markdown` are plain non-grounding prompts.)
-    **`inscriber` defaults to `<|grounding|>Convert the document to markdown.`**;
-    pin the exact string on real output in M1 (§8.3).
+  - **Prompt.** **`<|grounding|>Convert the document to markdown.`** — confirmed
+    in M1a as the working grounded-layout prompt. ⚠️ `<|grounding|>OCR` and plain
+    `OCR` (despite being reported working in the llama.cpp guide) produce
+    **runaway repetition loops** on this build — do not use them. Plain
+    `Convert the document to markdown.` yields clean **ungrounded** text and is
+    what `inscriber` sends when figures are disabled (§8.3).
   - **Resolution modes.** DeepSeek-OCR's documented native modes are
     **Tiny (512px)**, **Small (640px)**, **Base (1024px)**, **Large (1280px)**,
     plus a dynamic tiling mode informally called **"Gundam"** (multiple ~640px
@@ -164,18 +173,38 @@ So **every** model `inscriber` uses (OCR and VLM) is configured as a
     grounding-coordinate frame for Gundam must be confirmed during M1
     (coords may be relative to the 1024 global view, not the tiles).
 
-> ⚠️ **Implementation note on the grounding format.** DeepSeek-OCR's grounding
-> output follows the DeepSeek-VL convention: region references wrapped as
-> `<|ref|>LABEL<|/ref|><|det|>[[x1, y1, x2, y2]]<|/det|>`, coordinates on a
-> **0–999** grid. **The coordinate _frame_ is an open M1 question, not settled:**
-> reference implementations scale each axis independently by the **original
-> image** dimensions (`px = coord/999 * W`, `py = coord/999 * H`, no padding
-> subtraction), yet some docs describe the grid as relative to the **padded
-> 1024² input** the encoder sees. These disagree on non-square pages. M1 must
-> **determine it empirically** (feed an image with a figure at a known location,
-> read the emitted coords, pick the mapping that reproduces the box) — see §8.3.
-> Default to the reference behavior (original-image, no padding) until proven
-> otherwise.
+> ✅ **Grounding format & coordinate frame (CONFIRMED — M1a, build 9028;
+> evidence in `dev/docs/M1A-FINDINGS.md` Q2–Q3, locked in
+> `tests/test_deepseek_parser.py` golden fixtures).** Upstream DeepSeek-VL docs
+> describe inline `<|ref|>LABEL<|/ref|><|det|>[[x1, y1, x2, y2]]<|/det|>` spans,
+> but **this build emits a block layout list** instead — one region per block:
+>
+> ```text
+> LABEL[[x1, y1, x2, y2]]
+> <region markdown text, until the next LABEL[[…]] or a blank line>
+> ```
+>
+> Labels observed: `title`, `sub_title` (text already carries `##`), `text`,
+> `image` (the figure-class label this build uses; no text of its own),
+> `image_caption` (wrapped `<center>…</center>`, immediately follows its
+> `image` block). Math arrives as inline `\(…\)` LaTeX.
+>
+> Coordinates are on a **0–999 grid relative to the page image padded to a
+> square** of side `L = max(W, H)` with the short axis centered — **not** the
+> per-axis/original-image mapping reference implementations use (the two
+> disagree on non-square pages; the padded-square prediction matched the
+> calibration box to Δ≈5 grid units vs Δ≈31 for per-axis):
+>
+> ```text
+> pad = (L - dim) / 2     per axis
+> px  = grid / 999 * L - pad   →   norm = clamp(px / dim, 0, 1)
+> ```
+>
+> The mapping lives in `DeepSeekOcrBackend` (`grid_to_norm`), keeping
+> `bbox_norm` original-page-relative for the rest of the pipeline (§8.2). The
+> **Gundam** mode's frame (global view vs. tiles) remains unconfirmed — re-check
+> when Gundam is exercised, and re-verify format + frame on any llama.cpp
+> upgrade.
 
 ### 2.3 Gemma 4 (first VLM backend)
 
@@ -624,46 +653,42 @@ so cropping (§8.4) is genuinely model-agnostic and the coordinate-frame mapping
   for the figure boxes). When figures are disabled (`figure.detect = none`, §13),
   use the plain `"Convert the document to markdown."` prompt.
 - **`ocr_page` algorithm** (single grounding call → clean text **and** boxes;
-  this is the "exact parsing, single pass" decision):
-  1. Call `inf` once with the grounding prompt.
-  2. Find all grounding spans via regex, **expected**:
-     `<\|ref\|>(?P<label>.*?)<\|/ref\|><\|det\|>\[\[(?P<coords>[\d,\s]+)\]\]<\|/det\|>`
-     (coords on a **0–999** grid — see the M1 caveat below).
-  3. **Convert coordinates into the original-page `[0,1]` frame.** The simple,
-     reference-implementation mapping is **per-axis against the original image,
-     no padding subtraction**: `bbox_norm = (x1/999, y1/999, x2/999, y2/999)`
-     (i.e. pixels `px = coord/999 * W`, `py = coord/999 * H`). **Default to this.**
-     ⚠️ **But the frame is an open M1 question** (§2.2): some docs describe the
-     0–999 grid as relative to the **padded 1024² encoder input**, which on a
-     non-square page would instead require scaling by the long edge and
-     subtracting `pad = (L_px − S_px)/2` on the short axis. M1 must **determine
-     empirically** which is correct — render a page with a figure at a known
-     location, read the emitted coords, and keep whichever mapping reproduces the
-     box — and lock it in a golden test. For **Gundam**, also confirm whether
-     coords are relative to the 1024 global view or the tiles. **Whatever the
-     answer, encapsulate it in the backend** so `bbox_norm` is always
-     original-page-relative (§8.2).
-  4. **Build clean markdown by _replacing_ each grounding span, not blindly
-     deleting it.** ⚠️ Critical: for **figure-class** regions (`label` ∈
-     {figure, image, picture, chart, diagram, plot}), replace the span **in
-     place** with a `⟦INSCRIBER_FIG:{id}⟧` placeholder token (`id = fig_p{page}_{i}`)
-     so the description can be injected at the figure's real position later
-     (§10.2). For non-figure regions (text/title/table), strip the markup but
-     keep the text. **Do not** strip everything — that destroys the only anchor
-     and there is no inline `![]()` to fall back on (unlike paper2llm; see §10.2,
-     B-note). Set `Region.text` to the span's caption/inline text (used for the
-     `{caption_or_label}` in `describe-and-keep`, §10.2).
+  this is the "exact parsing, single pass" decision; format/frame are the
+  **M1a-confirmed** facts of §2.2):
+  1. Call `inf` once with the grounding prompt (image content-part **before**
+     the text — §2.1).
+  2. Split the output into ordered **`LABEL[[x1, y1, x2, y2]]` blocks**
+     (`MARKER_RE`): each marker line is followed by that region's markdown text,
+     up to the next marker. Coords are on the **0–999 padded-square** grid.
+  3. **Convert coordinates into the original-page `[0,1]` frame** via the
+     padded-square mapping (`grid_to_norm`, §2.2): `L = max(W, H)`,
+     `pad = (L − dim)/2` per axis, `px = grid/999 · L − pad`,
+     `norm = clamp(px/dim, 0, 1)`. The mapping is **encapsulated in the
+     backend** so `bbox_norm` is always original-page-relative (§8.2); for
+     **Gundam**, the frame is still unconfirmed (§2.2).
+  4. **Build clean markdown by _replacing_ each figure block, not blindly
+     deleting it.** ⚠️ Critical: for **figure-class** blocks (`label` ∈
+     {figure, image, picture, chart, diagram, plot}; this build emits `image`),
+     emit a `⟦INSCRIBER_FIG:{id}⟧` placeholder token (`id = fig_p{page}_{i}`) in
+     the block's position so the description can be injected at the figure's
+     real position later (§10.2). The caption is the `image_caption` block that
+     immediately follows the figure block — it becomes `Region.text` (used for
+     the `{caption_or_label}` in `describe-and-keep`, §10.2) while its text also
+     stays in the markdown. For non-figure blocks (text/title/table/…), keep the
+     text verbatim. **Do not** strip everything — the placeholder is the only
+     anchor and there is no inline `![]()` to fall back on (unlike paper2llm;
+     see §10.2, B-note).
 - **Robustness:** if grounding markup is malformed/absent, fall back to treating
   the whole output as plain markdown with `regions = []` (no figures described,
   pipeline still succeeds). Log a warning.
 
-> **M1 task (highest risk in the whole design):** capture real DeepSeek-OCR
-> output on 2–3 representative pages, commit them as golden fixtures, pin
-> `test_deepseek_parser.py` to them, and **determine the coordinate frame
-> empirically** (step 3 / §2.2): verify whether `coord/999` maps against the
-> original image (reference default) or the padded square, by checking which
-> reproduces a known box. Treat the token strings, prompt, and frame as
-> expected-but-unverified until this is done.
+> ✅ **M1a (was the highest risk in the design) — DONE.** Real DeepSeek-OCR
+> output was captured and committed as golden fixtures
+> (`tests/fixtures/deepseek_paper_p1_raw.txt`, `deepseek_calibration_raw.txt`),
+> `test_deepseek_parser.py` is pinned to them, and the coordinate frame was
+> **determined empirically as padded-square** via a calibration page with a box
+> at a known location (`dev/docs/M1A-FINDINGS.md` Q2). Re-run that discipline —
+> capture, compare, re-pin — on any llama.cpp or model upgrade (§22.2).
 
 ### 8.4 Figure detection & cropping (`pdf/figures.py`, `pdf/crop.py`)
 
@@ -980,6 +1005,9 @@ of the page's text supplies correct spellings for merged labels. Low-risk
 The prompt is the validated one from the findings note, verbatim (count-aware
 locator + correct-when-certain + page-text context), assembled by
 `format_table_prompt()` and sent as a single user message, image first.
+⚠️ **Treat the prompt text and message shape as pinned**: every ingredient was
+added after a simpler version failed (history in the findings note) — do not
+reword or restructure it without re-validating on real hardware.
 
 Mechanics, in pipeline order (step 5, **before** figure description so figure
 context already sees clean tables):
@@ -1842,35 +1870,38 @@ internal; inscriber tracks figures via `Region`/placeholders instead.
 ## 25. End-to-end worked example (one page, one figure)
 
 A concrete trace threading §7→§12 for `paper.pdf`, page 3, which contains one
-figure. This is the canonical example the M1a fixtures should capture.
+figure. (The committed M1a fixtures capture a real page of this shape —
+`tests/fixtures/deepseek_paper_p1_raw.txt`.)
 
 **1. Rasterize (§7).** Page 3 (A4, 595×842 pt) at `large` (1280px long edge):
 `zoom = 1280/842 ≈ 1.52`, producing `PageImage(page_number=3, png, W=905, H=1280)`.
 
-**2. OCR call (§8.3).** `DeepSeekOcrBackend.ocr_page` sends the page PNG with
-prompt `<|grounding|>Convert the document to markdown.`, `temperature: 0`,
-`max_tokens` capped. Raw output (illustrative, to be replaced by a real M1a
-fixture):
+**2. OCR call (§8.3).** `DeepSeekOcrBackend.ocr_page` sends the page PNG (image
+content-part first, §2.1) with prompt
+`<|grounding|>Convert the document to markdown.`, `temperature: 0`,
+`max_tokens` capped. Raw output (illustrative, in the M1a-confirmed block
+format):
 
 ```
+sub_title[[230, 95, 540, 120]]
 ## 3. Method
 
+text[[160, 150, 840, 172]]
 We train the model as shown below.
 
-<|ref|>figure<|/ref|><|det|>[[101, 240, 880, 612]]<|/det|>
-
-Figure 1: Training pipeline overview.
+image[[300, 240, 760, 612]]
+image_caption[[300, 625, 700, 645]]
+<center>Figure 1: Training pipeline overview.</center>
 ```
 
-**3. Parse + map coords (§8.3).** One figure span, coords `[101,240,880,612]` on
-the 0–999 grid. Using the **default reference mapping** (per-axis against the
-original image, no padding): `bbox_norm = (101/999, 240/999, 880/999, 612/999) ≈
-(0.10, 0.24, 0.88, 0.61)` (pixels `x=[91,797]`, `y=[307,784]` against
-`W=905,H=1280`). _(If M1 instead confirms the padded-square frame, this becomes
-≈(0.0,0.24,1.0,0.61) — which is exactly why M1 must pin it empirically, §2.2.)_
-The figure span is **replaced** by a placeholder (not deleted);
-`Region.text = "Figure 1: Training pipeline overview."` Resulting
-`OcrPageResult.markdown`:
+**3. Parse + map coords (§8.3).** Four blocks; one figure-class block (`image`),
+coords `[300, 240, 760, 612]` on the 0–999 **padded-square** grid. With
+`W=905, H=1280`: `L = 1280`, `pad_x = (1280−905)/2 = 187.5`, `pad_y = 0`, so
+`px = grid/999 · 1280 − 187.5` → pixels `x=[197, 786]`, `y=[307, 784]` →
+`bbox_norm ≈ (0.218, 0.240, 0.869, 0.613)`. The `image` block is **replaced** by
+a placeholder (not deleted); the following `image_caption` block supplies
+`Region.text = "<center>Figure 1: Training pipeline overview.</center>"` while
+its text also stays in the markdown. Resulting `OcrPageResult.markdown`:
 
 ```
 ## 3. Method
@@ -1879,7 +1910,7 @@ We train the model as shown below.
 
 ⟦INSCRIBER_FIG:fig_p3_1⟧
 
-Figure 1: Training pipeline overview.
+<center>Figure 1: Training pipeline overview.</center>
 ```
 
 **4. Crop (§8.4).** `bbox_norm` × `(905,1280)` + 2% margin → crop saved as
@@ -1898,9 +1929,10 @@ text.
 > right by arrows.
 ```
 
-(With `describe-and-keep`, an `![Figure 1: …](figures/fig_p3_1.png)` line precedes
-it.) §10.3 `ensureImageDescriptionSpacing` guarantees blank lines around the
-block and the trailing `Figure 1:` caption.
+(With `describe-and-keep`, an `![<center>Figure 1: …</center>](figures/fig_p3_1.png)`
+line precedes it, alt text = `Region.text`.) §10.3 `ensureImageDescriptionSpacing`
+guarantees blank lines around the block, and the `<center>…</center>` caption line
+is a protected artifact line for the header/footer stripper (§10.3b).
 
 **7. Assemble / split / write (§10–§14).** Pages concatenated → cleanup → split →
 `paper.md` (full), `paper.main.md` / `paper.appendix.md` / `paper.backmatter.md`

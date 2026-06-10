@@ -1,15 +1,17 @@
 """DeepSeek-OCR backend (DESIGN §8.3) — pinned to the M1a real-hardware findings.
 
-**M1a divergences from the original DESIGN (see dev/docs/M1A-FINDINGS.md), locked here:**
+**M1a-confirmed facts (DESIGN §2.1–2.2/§8.3; evidence in dev/docs/M1A-FINDINGS.md),
+locked here:**
 
 * Output is a **block layout list**, one region per block::
 
       LABEL[[x1, y1, x2, y2]]
       <region markdown text, until the next LABEL[[…]] or blank line>
 
-  …NOT the expected inline ``<|ref|>…<|/ref|><|det|>…<|/det|>`` spans.
+  …NOT the inline ``<|ref|>…<|/ref|><|det|>…<|/det|>`` spans upstream docs describe.
 * Coordinates are on the 0–999 **padded-square** grid (side = the long edge of the
-  rendered page, short axis centered) — NOT the per-axis/original-image default.
+  rendered page, short axis centered) — NOT the per-axis/original-image mapping
+  reference implementations use.
 * The figure label is ``image``; its caption is the following ``image_caption``
   block.
 * Grounding only activates with the image content-part **before** the text
