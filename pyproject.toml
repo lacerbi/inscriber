@@ -48,6 +48,11 @@ Source = "https://github.com/lacerbi/inscriber"
 [tool.hatch.build.targets.wheel]
 packages = ["inscriber"]
 
+[tool.hatch.build.targets.sdist]
+# Keep developer-only material (dev/ lab notes, CI, agent tooling) out of the
+# published sdist; tests and docs stay in.
+exclude = ["dev/", ".github/", ".claude/", ".agents/"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py310"

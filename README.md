@@ -68,7 +68,11 @@ figure crops (see [Usage](#usage)).
 
 ## Install
 
-Not yet on PyPI — install from source:
+```bash
+pip install inscriber
+```
+
+Or install the latest development version from source:
 
 ```bash
 pip install git+https://github.com/lacerbi/inscriber.git
@@ -131,7 +135,7 @@ as `mmproj-gemma-4-E4B-it-qat-BF16.gguf`).
 
 ### 3. Configuration
 
-Copy [`config.example.toml`](config.example.toml) to `config.toml` in the
+Copy [`config.example.toml`](https://github.com/lacerbi/inscriber/blob/main/config.example.toml) to `config.toml` in the
 directory you run from (or the platform config dir, e.g.
 `%APPDATA%\inscriber\config.toml` on Windows, `~/.config/inscriber/config.toml`
 on Linux) and fill in the llama.cpp `bin_dir` and the four model paths
@@ -204,8 +208,8 @@ style headings), which may differ from the original document order.
 
 The repo ships assistant skills for the convert-and-verify workflow:
 
-- [Claude Code](https://claude.com/claude-code): [`/inscribe`](.claude/skills/inscribe/SKILL.md)
-- Codex: [`$inscribe`](.agents/skills/inscribe/SKILL.md)
+- [Claude Code](https://claude.com/claude-code): [`/inscribe`](https://github.com/lacerbi/inscriber/blob/main/.claude/skills/inscribe/SKILL.md)
+- Codex: [`$inscribe`](https://github.com/lacerbi/inscriber/blob/main/.agents/skills/inscribe/SKILL.md)
 
 When run inside this repository, the skill takes a PDF path or URL (plus any
 options in plain words), runs `inscriber`, then checks the transcription against
@@ -264,8 +268,10 @@ pytest                          # mocked inference — no GPU or models needed
 ruff check
 ```
 
-Contributor guidance lives in [`AGENTS.md`](AGENTS.md); the full technical
-specification is [`DESIGN.md`](DESIGN.md).
+Contributor guidance lives in
+[`AGENTS.md`](https://github.com/lacerbi/inscriber/blob/main/AGENTS.md); the
+full technical specification is
+[`DESIGN.md`](https://github.com/lacerbi/inscriber/blob/main/DESIGN.md).
 
 ## License
 
