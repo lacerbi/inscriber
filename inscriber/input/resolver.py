@@ -8,6 +8,7 @@ arrive in M4** and extend this module (:func:`resolve_input` will branch on URL)
 from __future__ import annotations
 
 from pathlib import Path
+from urllib.parse import urlparse, urlunparse
 
 import httpx
 
@@ -83,6 +84,13 @@ def _download_pdf(pdf_url: str, *, transport: httpx.BaseTransport | None = None)
             transport=transport,
         ) as client:
             with client.stream("GET", pdf_url) as resp:
+                if resp.url.scheme != "https":
+                    # Input URLs are upgraded in resolve_url, so plaintext here
+                    # means a downgrade redirect — the body is MITM-tamperable.
+                    logger.warning(
+                        "download is being served over plain HTTP (%s) — the "
+                        "content could be tampered with in transit", resp.url,
+                    )
                 if resp.status_code != 200:
                     raise InputError(
                         f"download of {pdf_url} returned HTTP {resp.status_code}"
@@ -110,7 +118,13 @@ def _download_pdf(pdf_url: str, *, transport: httpx.BaseTransport | None = None)
 
 
 def resolve_url(url: str) -> ResolvedInput:
-    """Resolve an http(s) URL via the domain handlers (DESIGN §6)."""
+    """Resolve an http(s) URL via the domain handlers (DESIGN §6).
+
+    A plain ``http://`` input is upgraded to ``https://`` before any request —
+    every supported repository serves HTTPS, and a plaintext fetch would let a
+    MITM feed attacker bytes to PyMuPDF. (Unknown hosts never get fetched at
+    all — there is no catch-all handler.)
+    """
     handler = find_handler(url)
     if handler is None:
         raise InputError(
@@ -118,6 +132,10 @@ def resolve_url(url: str) -> ResolvedInput:
             f"{url}\nSupported: arXiv, OpenReview, ACL, bioRxiv, medRxiv, NeurIPS, MLR Press. "
             "Download the PDF and pass a local path instead."
         )
+    parsed = urlparse(url)
+    if parsed.scheme == "http":
+        url = urlunparse(parsed._replace(scheme="https"))
+        logger.info("upgraded plain http:// input URL to https:// (%s)", url)
     pdf_url = handler.normalize_pdf_url(url)
     suggested = Path(handler.file_name(url)).stem
     logger.info("resolving %s → %s", url, pdf_url)

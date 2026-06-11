@@ -35,6 +35,19 @@ def _ensure_pdf_extension(url: str) -> str:
     return url if url.lower().endswith(".pdf") else f"{url}.pdf"
 
 
+def host_matches(host: str, pattern: str) -> bool:
+    """Suffix host matching: ``host`` IS ``pattern`` or a subdomain of it.
+
+    Deliberate, documented parity break from the TS source's substring
+    ``hostname.includes(...)`` (DESIGN §6): a lookalike host that merely
+    *contains* a repository domain (``arxiv.org.evil.com``, ``evilarxiv.org``)
+    must not match — it would route the download (and, via provenance, the
+    BibTeX chain) to an attacker host. Real subdomains (``www.biorxiv.org``,
+    ``export.arxiv.org``) still match.
+    """
+    return host == pattern or host.endswith("." + pattern)
+
+
 class GenericDomainHandler:
     def __init__(self, config: RepositoryConfig) -> None:
         self.config = config
@@ -42,7 +55,7 @@ class GenericDomainHandler:
     def can_handle(self, url: str) -> bool:
         parsed = urlparse(url)
         host = parsed.hostname or ""
-        if not any(p in host for p in self.config.host_patterns):
+        if not any(host_matches(host, p) for p in self.config.host_patterns):
             return False
         return any(p.search(parsed.path) for p in self.config.url_patterns)
 
@@ -54,7 +67,7 @@ class GenericDomainHandler:
 
         # OpenReview special case (host-level branch BEFORE the generic rules,
         # DESIGN §6): require ?id=, set path /pdf, PRESERVE the query.
-        if "openreview.net" in (parsed.hostname or ""):
+        if host_matches(parsed.hostname or "", "openreview.net"):
             id_ = parse_qs(parsed.query).get("id", [None])[0]
             if not id_:
                 return url  # unchanged if no ID

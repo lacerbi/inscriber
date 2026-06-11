@@ -1,11 +1,12 @@
 # 2026-06-11 — Pre-release codebase review: remaining findings (handoff)
 
-**Status: partially resolved (2026-06-11, batch 1).** The mechanical tier —
-A1–A6, C1, B3, B4, E2, + the C4 comment — was fixed the same day, and **B1 was
-declined** (maintainer decision; DESIGN §10.3b amended to state the actual
-behavior instead). Per-item status lines below. **Still open: B2, B5
-(parity-bound, decision only), C2+C3 (one cache-orphaning change), D1–D3,
-E1, E3 (watch).**
+**Status: mostly resolved (2026-06-11, batches 1–2).** Batch 1 (the mechanical
+tier — A1–A6, C1, B3, B4, E2, + the C4 comment) and batch 2 (input hardening —
+D1 via a new `defusedxml` dependency, D2, D3) were fixed the same day, and
+**B1 was declined** (maintainer decision; DESIGN §10.3b amended to state the
+actual behavior instead). Per-item status lines below. **Still open: B2, B5
+(parity-bound, decision only), C2+C3 (one cache-orphaning change), E1,
+E3 (watch).**
 
 This note is the self-contained record of the
 findings from the 2026-06-11 full-codebase pre-release review that were **not**
@@ -288,6 +289,14 @@ Before touching anything here, read `AGENTS.md` ("Where truth lives",
 * **Fix:** use `defusedxml.ElementTree` (new optional dep) **or** keep stdlib
   and document the trust assumption here + in DESIGN §12. Failure must remain
   a degrade-not-raise (`ParseError` → `None`).
+* **Status:** ✅ fixed 2026-06-11 — `defusedxml` adopted as a **runtime**
+  dependency (maintainer-approved: pure-Python, zero transitive deps, wraps —
+  not reimplements — the stdlib parser, so no new attack surface);
+  `defused_fromstring(..., forbid_dtd=True)` in `arxiv_bibtex`, catching
+  `(ParseError, DefusedXmlException)` → warn + `None` (degrade preserved).
+  Pinned by `test_arxiv_bibtex_rejects_xml_bomb` — verified discriminating
+  (stdlib parses + expands the same payload; defusedxml raises
+  `DTDForbidden`). DESIGN §12.1/§18.1 + pyproject updated.
 
 ### D2. [MEDIUM] Plain `http://` input URLs accepted silently
 
@@ -297,6 +306,11 @@ Before touching anything here, read `AGENTS.md` ("Where truth lives",
   repositories are HTTPS in practice.
 * **Fix:** upgrade `http://` → `https://` for the seven known hosts (safe), or
   warn loudly on any plaintext fetch. Keep `--offline` semantics untouched.
+* **Status:** ✅ fixed 2026-06-11 — both halves: `resolve_url` upgrades a plain
+  `http://` input before any request (handler-matched URLs are exactly the
+  seven hosts; unknown hosts are never fetched), and `_download_pdf` warns
+  loudly when the *served* response is plaintext (downgrade redirect).
+  `--offline` untouched. `tests/test_resolver.py`; DESIGN §6 updated.
 
 ### D3. [LOW] Substring host matching
 
@@ -312,6 +326,13 @@ Before touching anything here, read `AGENTS.md` ("Where truth lives",
   `hostname.includes(...)` — this is a deliberate, documented parity break;
   pin with fixtures (`tests/test_domain_handlers.py`) including the evil-host
   negative case.
+* **Status:** ✅ fixed 2026-06-11 — `host_matches` in `domain_handlers.py`,
+  used by `can_handle`, the OpenReview host branch in `normalize_pdf_url`
+  (also substring before), and `arxiv_id_from_url`. Evil-host negatives
+  (`arxiv.org.evil.com`, `evilarxiv.org`, `openreview.net.evil.com`) +
+  real-subdomain positives (`export.arxiv.org`) pinned in
+  `tests/test_domain_handlers.py` and `tests/test_bibtex_chain.py`. Parity
+  break documented in DESIGN §6.
 
 ---
 

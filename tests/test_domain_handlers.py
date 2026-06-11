@@ -84,6 +84,21 @@ def test_unmatched_url_not_handled():
     assert find_handler("https://example.com/some/paper") is None
 
 
+def test_lookalike_hosts_not_matched():
+    # Suffix host matching (review D3; deliberate parity break with the TS
+    # substring `hostname.includes`): a host that merely CONTAINS a repository
+    # domain must not match — the download would go to the attacker host.
+    assert find_handler("https://arxiv.org.evil.com/abs/2301.12345") is None
+    assert find_handler("https://evilarxiv.org/abs/2301.12345") is None
+    assert find_handler("https://openreview.net.evil.com/forum?id=x") is None
+
+
+def test_real_subdomains_still_matched():
+    # ...while genuine subdomains keep working (www.biorxiv.org is pinned by
+    # test_biorxiv above; export.arxiv.org is the other real-world shape).
+    assert find_handler("https://export.arxiv.org/abs/2301.12345") is not None
+
+
 def test_resolve_unmatched_url_errors():
     with pytest.raises(InputError, match="no matching repository handler"):
         resolve_input("https://example.com/paper")

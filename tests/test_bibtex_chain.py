@@ -126,6 +126,14 @@ def test_arxiv_id_from_url_shapes():
     assert arxiv_id_from_url(None) is None
 
 
+def test_arxiv_id_from_url_rejects_lookalike_hosts():
+    # Suffix host matching (review D3): a lookalike host must not become arXiv
+    # *provenance* (citable by construction, its ID sent to S2/arXiv).
+    assert arxiv_id_from_url("https://arxiv.org.evil.com/abs/2510.18234") is None
+    assert arxiv_id_from_url("https://evilarxiv.org/abs/2510.18234") is None
+    assert arxiv_id_from_url("https://export.arxiv.org/abs/2510.18234") == "2510.18234"
+
+
 def test_strip_arxiv_version():
     assert strip_arxiv_version("2510.18234v2") == "2510.18234"
     assert strip_arxiv_version("2510.18234") == "2510.18234"
@@ -184,6 +192,25 @@ def test_arxiv_bibtex_degrades(fake_http):
     routes[ARXIV_API] = _Resp(status_code=500)
     assert arxiv_bibtex("2510.18234") is None
     routes[ARXIV_API] = httpx.HTTPError("network down")
+    assert arxiv_bibtex("2510.18234") is None
+
+
+ATOM_BOMB = """<?xml version="1.0"?>
+<!DOCTYPE lolz [
+ <!ENTITY lol "lol">
+ <!ENTITY lol2 "&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;">
+ <!ENTITY lol3 "&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;">
+]>
+<feed xmlns="http://www.w3.org/2005/Atom"><entry><title>&lol3;</title></entry></feed>
+"""
+
+
+def test_arxiv_bibtex_rejects_xml_bomb(fake_http):
+    # defusedxml (review D1): an entity-expansion payload from a tampered/
+    # malicious response degrades to None like any parse failure — it must
+    # never expand (and the DTD itself is forbidden outright).
+    routes, _ = fake_http
+    routes[ARXIV_API] = _Resp(text=ATOM_BOMB)
     assert arxiv_bibtex("2510.18234") is None
 
 

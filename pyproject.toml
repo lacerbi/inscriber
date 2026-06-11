@@ -30,6 +30,7 @@ dependencies = [
     "pillow>=10.0",
     "httpx>=0.27",
     "platformdirs>=4.0",
+    "defusedxml>=0.7",  # arXiv Atom parsing — the one place remote XML is parsed (DESIGN §12.1)
     "tomli>=2.0; python_version < '3.11'",
 ]
 

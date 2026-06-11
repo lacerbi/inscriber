@@ -84,3 +84,36 @@ def test_download_streamed_oversize_aborts_mid_body(monkeypatch):
     t = _transport_returning(httpx.Response(200, content=chunks()))
     with pytest.raises(InputError, match="MiB limit"):
         _download_pdf(URL, transport=t)
+
+
+def test_http_input_upgraded_to_https(monkeypatch):
+    # Review D2: every supported repository serves HTTPS — a plain http:// input
+    # is upgraded before any request is made (and recorded as the provenance URL).
+    seen = {}
+
+    def fake_download(pdf_url, **kwargs):
+        seen["url"] = pdf_url
+        return b"%PDF-1.7 fake"
+
+    monkeypatch.setattr(resolver, "_download_pdf", fake_download)
+    resolved = resolver.resolve_url("http://arxiv.org/abs/2301.12345")
+    assert seen["url"] == "https://arxiv.org/pdf/2301.12345.pdf"
+    assert resolved.original_url == "https://arxiv.org/abs/2301.12345"
+
+
+def test_plain_http_download_warns(caplog):
+    # Review D2: a plaintext fetch that slips past the upgrade (downgrade
+    # redirect) must warn loudly — the body is MITM-tamperable.
+    import logging
+
+    logging.getLogger("inscriber").propagate = True  # let caplog see records
+    body = b"%PDF-1.7 fake body"
+    t = _transport_returning(httpx.Response(200, content=body))
+    with caplog.at_level(logging.WARNING, logger="inscriber"):
+        assert _download_pdf("http://insecure.example/p.pdf", transport=t) == body
+    assert "plain HTTP" in caplog.text
+
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="inscriber"):
+        _download_pdf(URL, transport=_transport_returning(httpx.Response(200, content=body)))
+    assert "plain HTTP" not in caplog.text  # https stays quiet

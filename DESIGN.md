@@ -12,7 +12,18 @@
 > `paper2llm`). It is written to be read entirely standalone — every concept,
 > dependency, and external quirk needed to build v1 is described here.
 >
-> **Last updated:** 2026-06-11 (**review batch 1: robustness/UX + small
+> **Last updated:** 2026-06-11 (**review batch 2: input hardening** — the
+> D-tier of the `dev/notes/2026-06-11-prerelease-review.md` handoff list:
+> §6 plain `http://` input URLs are upgraded to `https://` before any request
+> and a plaintext-served download (downgrade redirect) warns loudly (D2);
+> §6/§12.1 host matching switched from substring to **suffix** matching
+> (`host_matches` — a deliberate, documented parity break from the TS
+> `hostname.includes`: `arxiv.org.evil.com` no longer matches as a download
+> host or as arXiv provenance; evil-host fixtures pin it) (D3); §12.1/§18.1
+> the arXiv Atom response — the one remote-XML parse — now goes through
+> **`defusedxml`** (new zero-dep runtime dependency; `forbid_dtd=True`;
+> rejected payloads degrade like any parse failure) (D1). Earlier same day —
+> **review batch 1: robustness/UX + small
 > correctness** — the mechanical tier of the
 > `dev/notes/2026-06-11-prerelease-review.md` handoff list, statuses recorded
 > there: `setup` file-in-use errors now raise actionable `SetupError`s (A1);
@@ -688,7 +699,15 @@ Input is one positional argument: a **local PDF path** or an **http(s) URL**.
     thin `DefaultDomainHandlerRegistry` singleton whose `getHandler(url)` is just
     find-first-`canHandle` over that list. The Python port needs only a list +
     first-match; a registry class is optional.) URLs not matching any config are
-    simply **not handled** (no catch-all).
+    simply **not handled** (no catch-all). One deliberate **parity break**
+    (2026-06-11): host matching is by **suffix** (`host_matches`: `host == p or
+    host.endswith("." + p)`), not the TS source's substring
+    `hostname.includes(...)` — a lookalike host (`arxiv.org.evil.com`,
+    `evilarxiv.org`) must not match (it would route the download, and via
+    provenance the §12.1 BibTeX chain, to an attacker host), while real
+    subdomains (`www.biorxiv.org`, `export.arxiv.org`) still do. Same rule in
+    `arxiv_id_from_url` (§12.1 provenance). Pinned by evil-host negative
+    fixtures in `tests/test_domain_handlers.py` / `tests/test_bibtex_chain.py`.
   - It ships **seven** repository configs — port all of them (pin each transform
     as a fixture, don't reverse-engineer):
     - **arXiv** `…/abs/{id}` → `…/pdf/{id}`
@@ -713,6 +732,12 @@ Input is one positional argument: a **local PDF path** or an **http(s) URL**.
         def file_name(self, url: str) -> str: ...
     ```
     …but the **reusable asset is the 7 regex configs**, not hand-written classes.
+  - A plain `http://` input URL is **upgraded to `https://`** before any
+    request (every supported repository serves HTTPS; a plaintext fetch would
+    let a MITM feed attacker bytes to PyMuPDF — unknown hosts are never
+    fetched at all, there being no catch-all). If a download is nonetheless
+    *served* over plain HTTP (a downgrade redirect), a loud WARNING is
+    emitted. `--offline` semantics are untouched.
   - Download with `httpx`, following redirects, with a timeout and a
     descriptive User-Agent. The body is **streamed with a hard size cap**
     (`MAX_DOWNLOAD_BYTES`, 512 MiB — the bytes are buffered in memory for
@@ -1645,8 +1670,13 @@ Scholar first:
    validation. A record with a real publication venue → the **published**
    `@article` entry (the same shape as the title-search path); no venue (or
    an "arXiv.org"-style one) → the `@misc` + `eprint` preprint shape.
-2. **arXiv export API** (`arxiv_bibtex`; Atom parsed with stdlib
-   `xml.etree`) — the availability fallback when S2 is down/429/recordless:
+2. **arXiv export API** (`arxiv_bibtex`; Atom parsed with **`defusedxml`** —
+   this is the one place remote XML is parsed, and stdlib `xml.etree` is
+   documented as unsafe against malicious data (entity-expansion bombs);
+   defusedxml wraps the stdlib parser with entities/external-references
+   forbidden, plus `forbid_dtd=True` since Atom needs no DTD. A rejected
+   payload degrades like any parse failure — warn + fall through, never
+   raise) — the availability fallback when S2 is down/429/recordless:
    the standard `@misc` + `eprint` + `primaryClass` shape. (The export API
    can never know about venue publication, hence second.)
 3. **Semantic Scholar title search** — query = the probe's title, else the
@@ -2236,6 +2266,7 @@ mocked servers.
 | `pillow`            | Crop figure regions from page images                     |
 | `httpx`             | llama-server chat client; URL download; S2/arXiv APIs    |
 | `platformdirs`      | Cross-platform config/cache/data dirs                    |
+| `defusedxml`        | arXiv Atom parsing (§12.1 — the one remote-XML parse; pure-Python, zero-dep wrapper hardening the stdlib parser) |
 | `tomli` (py<3.11)   | TOML parsing (`tomllib` is stdlib from 3.11)             |
 | `rich` _(optional)_ | Progress output / nicer logs                             |
 

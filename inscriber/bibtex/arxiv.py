@@ -15,12 +15,15 @@ from urllib.parse import urlparse
 from xml.etree import ElementTree
 
 import httpx
+from defusedxml import DefusedXmlException
+from defusedxml.ElementTree import fromstring as defused_fromstring
 
 from inscriber.bibtex.semantic_scholar import (
     USER_AGENT,
     generate_citation_key,
     sanitize_bibtex_text,
 )
+from inscriber.input.domain_handlers import host_matches
 from inscriber.logging import get_logger
 
 logger = get_logger()
@@ -36,11 +39,15 @@ _ARXIV_ID_RE = re.compile(r"/(?:abs|pdf|html)/([\w.-]+/?\d+|\d+\.\d+)")
 
 
 def arxiv_id_from_url(url: str | None) -> str | None:
-    """The arXiv ID (version suffix preserved) from an arxiv.org URL, else None."""
+    """The arXiv ID (version suffix preserved) from an arxiv.org URL, else None.
+
+    Host matching is by suffix (`host_matches`, DESIGN §6) — a lookalike host
+    must not be treated as arXiv *provenance* (citable by construction, §12.1).
+    """
     if not url:
         return None
     parsed = urlparse(url)
-    if "arxiv.org" not in (parsed.hostname or ""):
+    if not host_matches(parsed.hostname or "", "arxiv.org"):
         return None
     m = _ARXIV_ID_RE.search(parsed.path)
     return m.group(1) if m else None
@@ -72,9 +79,11 @@ def format_arxiv_misc(
 
 
 def arxiv_bibtex(arxiv_id: str, *, timeout: float = 30.0) -> str | None:
-    """Fetch + format the arXiv entry by ID via the export API (Atom, stdlib
-    ``xml.etree``); ``None`` on any HTTP/parse failure — log + fall through,
-    mirroring ``search_semantic_scholar``'s degrade style."""
+    """Fetch + format the arXiv entry by ID via the export API (Atom, parsed
+    with ``defusedxml`` — this is the one place remote XML is parsed, and the
+    stdlib parser is documented as unsafe for malicious input; DESIGN §12.1);
+    ``None`` on any HTTP/parse failure — log + fall through, mirroring
+    ``search_semantic_scholar``'s degrade style."""
     try:
         resp = httpx.get(
             API_URL,
@@ -89,8 +98,10 @@ def arxiv_bibtex(arxiv_id: str, *, timeout: float = 30.0) -> str | None:
         logger.warning("arXiv API returned HTTP %d", resp.status_code)
         return None
     try:
-        root = ElementTree.fromstring(resp.text)
-    except ElementTree.ParseError as e:
+        # forbid_dtd on top of defusedxml's entity/external-reference defaults:
+        # Atom needs no DTD, so a payload carrying one is rejected outright.
+        root = defused_fromstring(resp.text, forbid_dtd=True)
+    except (ElementTree.ParseError, DefusedXmlException) as e:
         logger.warning("arXiv API returned unparseable XML: %s", e)
         return None
     entry = root.find("atom:entry", _ATOM)
