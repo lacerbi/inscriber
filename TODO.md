@@ -24,6 +24,21 @@ Legend: `[ ]` todo · `[!]` blocked.
       header-width vs image consistency probe, or flagging wide/multi-header
       tables as low-confidence in the transcription notice. Investigation
       item — no chosen design yet.
+      **2026-06-11 addendum** (verification pass on a real 39-page run,
+      `hassan2026efficient`): header damage is now the dominant residual
+      class — 7 of 11 tables shipped with mislabeled/invented column headers
+      (`TNP-A (Set 1)/(Set 2)` over four different methods), a phantom column
+      shifting every label one place, an entire column silently dropped, or
+      colspan group sub-headers lost — every one passing the digit guard
+      (headers carry few digits; the values under the wrong labels were
+      correct). Strongest candidate so far: a **header-text containment
+      guard**, the label-side mirror of digit coverage — the output's
+      non-numeric header tokens must (mostly) appear in the blob or the
+      page-text context; invented labels fail containment while faithfully
+      propagated misreads still pass (same one-sided stance as digits).
+      Needs a calibrated threshold like `MIN_DIGIT_COVERAGE` — the VLM
+      legitimately adds label-cell words (`Method`, `Metric`) — and the same
+      keep-the-blob-on-failure handling.
 - [ ] **System/user message split** of the table prompt (static instructions as
       a system message → llama-server prefix-cache reuse, possible adherence
       gain). The validated prompt is a single user message — re-validate on

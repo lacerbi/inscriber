@@ -57,7 +57,12 @@ parallel, in multiple rounds if the paper is long. Each subagent prompt must
 contain, explicitly:
 
 1. The absolute PDF path and its page range (`Read` the PDF with
-   `pages: "X-Y"`).
+   `pages: "X-Y"`). Born-digital PDFs carry an exact text layer: instruct the
+   subagent to cross-check table cells, SEM digits, and subscripts against
+   PyMuPDF `page.get_text()` output (one-liner via the repo venv) instead of
+   reading tiny numbers off the rendered page — rendered-page reads have
+   produced confidently-wrong verdicts in both directions (claimed-blank
+   cells that hold values; "confirmed" digits that were wrong).
 2. The absolute paths of the Markdown outputs to check (the split files when
    they exist, else `<base>_full.md`) and a note that there are no page markers —
    locate the chunk's content by matching headings/text.
@@ -65,14 +70,20 @@ contain, explicitly:
    repetition loop with content missing after it).
 4. **The typical failure modes, in priority order — paste this list into the
    subagent prompt:**
-   - **Tables (highest risk — check every numeric cell).** Header misreads
-     where subscripts get mangled (`q_mild`/`q_strong`/`q_mixture` → `q&out`);
-     cell drift in sparse rows (rows of mostly `—` with 1–2 values placed in
-     the wrong column); single-cell value slips (`±0.24` for `±0.19`);
-     transposed values and phantom empty columns; silently dropped rows. A raw
-     HTML `<table>` blob (instead of a pipe table) means the restructuring
-     fell back — its values may be fused together (`159.99346.68300.4`);
-     report the correct segmentation.
+   - **Tables (highest risk — verify the header row AND every numeric cell).**
+     Column-attribution damage is the most dangerous class because the values
+     are usually correct while the labels lie: mislabeled or invented column
+     headers (`TNP-A (Set 1)/(Set 2)` over four different methods), a phantom
+     extra column shifting every label one place, an entire column silently
+     dropped, colspan group headers collapsed so sub-labels (`AR`/`Ind`)
+     vanish — compare the header tokens and the column COUNT against the PDF,
+     not just the cells. Also: header subscript mangling
+     (`q_mild`/`q_strong`/`q_mixture` → `q&out`); cell drift in sparse rows
+     (rows of mostly `—` with 1–2 values placed in the wrong column);
+     single-cell value slips (`±0.24` for `±0.19`); silently dropped rows. A
+     raw HTML `<table>` blob (instead of a pipe table) means the
+     restructuring fell back — its values may be fused together
+     (`159.99346.68300.4`); report the correct segmentation.
    - **Subscripts and short words in text/equations.** `θ_t` → `θ_i`,
      `p_train` → `p_min`, `Fail` → `Full` — the misread is always plausible,
      so compare symbol-by-symbol against the PDF wherever a claim depends on
@@ -100,6 +111,13 @@ contain, explicitly:
 - Review every reported fix yourself; for anything surprising or
   low-confidence, check the PDF page directly before accepting. Reject
   "fixes" that re-style rather than correct.
+- Verifier reports err in BOTH directions: quoted "current text" that does
+  not exist in the file (grep for it before editing — fabricated quotes
+  happen), claimed-blank PDF cells that actually hold values, and cells
+  "confirmed correct" that are wrong. Re-check every accepted table/math fix
+  against the PDF's extracted text layer (PyMuPDF `get_text()`), not the
+  rendered image — it is exact for born-digital PDFs and catches both
+  failure modes cheaply.
 - Apply accepted fixes **to the split files** (`*_main.md`, `*_appendix.md`,
   `*_backmatter.md`) — never to `<base>_full.md` directly. Then regenerate the
   full document from the corrected splits:
