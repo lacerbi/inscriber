@@ -20,22 +20,6 @@ Legend: `[ ]` todo · `[!]` blocked.
       assertion on PyMuPDF wheel bumps, `ChatClient`'s scalar 600 s timeout,
       the per-call handler-regex rebuild).
 
-## External (GPT) review follow-up (2026-06-11)
-
-- [ ] **Command-scope the structural config validation** — `validate_structural`
-      checks enum/type validity of every section regardless of command, so a
-      structurally invalid `[ocr]`/`[vlm]` value (e.g. an experimental
-      `ocr.backend` typo) blocks the pure-text `join` and blocks `describe` on
-      `[ocr]` keys it ignores — contradicting DESIGN §11 ("no models, servers,
-      or config required") and §8.5 ("describe ignores all `[ocr].*`"). Note
-      the *path-existence* layer is already command/stage-scoped; this is only
-      about enum/type checks. Fix: scope each check to the commands that read
-      the key (the §13.3 stage table is the map); counter-consideration: a
-      garbage config arguably *should* fail loudly everywhere — decide the
-      policy before coding. The review's other findings (ocr bundle clobber
-      guard, generic boolean validation, wrapped final-artifact writes,
-      documented experimental `glm-ocr`) were fixed 2026-06-11.
-
 ## Table-restructuring pass (DESIGN §9.7)
 
 - [ ] **Guard against silent SHAPE damage** in restructured tables — the

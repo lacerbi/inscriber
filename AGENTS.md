@@ -63,8 +63,10 @@ session) → stitch/clean → split (main/appendix/backmatter) → BibTeX (defau
   `manifest.json` + `figures/` crops + `pages/` rasters for table pages),
   `describe` (bundle → VLM + assembly, no OCR model), `join` (rejoin
   possibly hand-edited `{base}_main/_appendix/_backmatter.md` splits into
-  `{base}_full.md` — the §11 allparts form; pure text, no models/config
-  needed), and `setup` (DESIGN §13.4: downloads the recommended GGUFs against
+  `{base}_full.md` — the §11 allparts form; pure text, no models needed —
+  though an existing config file is still structurally validated, the
+  deliberate global policy of DESIGN §13.1), and `setup` (DESIGN §13.4:
+  downloads the recommended GGUFs against
   a **pinned sha256/size registry** in `inscriber/setup.py` and writes/updates
   the platform `config.toml`; outside the pipeline — no RunConfig. The
   registry pins and the README model table must change together). Output

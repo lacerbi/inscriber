@@ -27,7 +27,10 @@
 > decision: keep it registered as a text-only escape hatch — no grounding,
 > not pinned on real output — rather than unregister; caveats in §22.1).
 > The review's remaining finding (command-scoped structural config
-> validation) is tracked in `TODO.md`. Earlier same day —
+> validation) was **resolved as deliberate policy, not code**: structural
+> validation is global — see the §13.1 policy paragraph; §11/§8.5 wording
+> aligned ("no config *file* needed" / "ignored ≠ unvalidated").
+> Earlier same day —
 > **review batch 3: figure cache key** — C2+C3
 > of the `dev/notes/2026-06-11-prerelease-review.md` handoff list, in one
 > change so warm figure entries are **orphaned exactly once**: §9.6 the
@@ -1109,7 +1112,10 @@ Notes:
     §12), `[net].offline`, and
     `[llama].*` + `[inference]` (it still launches a VLM server).
   - **Ignores (baked into the bundle at `ocr` time):** all `[ocr].*`,
-    `[figure].detect`, `[figure].crop_padding`.
+    `[figure].detect`, `[figure].crop_padding`. (Ignored ≠ unvalidated: the
+    structural layer still checks them like the rest of the file — the
+    deliberate global-validation policy, §13.1. The `[ocr]` model *paths* are
+    never checked at describe time.)
   - `figure.detect = none` / `--no-figures` at describe time **skips description**
     of bundled figures (leaves the figure out, or as a bare image ref if
     `describe-and-keep` — define as: drop the description, keep nothing).
@@ -1646,7 +1652,9 @@ append-BibTeX-to-document option (§12).
 **`inscriber join BASE` (the rejoin subcommand).** Reads
 `{base}_main/_appendix/_backmatter.md` (BASE = a base path, the `_main.md`
 file, or a directory holding exactly one set of splits) and regenerates
-`{base}_full.md` next to them — no models, servers, or config required. The
+`{base}_full.md` next to them — no models, no servers, and no config *file*
+needed (an existing config must still be structurally valid like for every
+subcommand — the deliberate global-validation policy, §13.1). The
 standalone split files already carry the allparts framing, so joining strips
 each file's **per-file extras** — the transcription-notice footer, and main's
 prepended BibTeX block — concatenates in the allparts order above, then
@@ -1853,6 +1861,20 @@ If no local config exists, the fallback location is resolved via
 
 Overridable with `--config PATH`. **Every field is overridable by a CLI flag.**
 Precedence: **CLI flag > config file > built-in default.**
+
+**Validation policy (deliberate, recorded 2026-06-11):** *structural*
+validation — enum membership, numeric ranges, types — is **global**: an
+existing config file must be valid in its entirety regardless of the
+subcommand, so a typo'd `[ocr]` value fails `join`/`describe` loudly too
+(garbage anywhere in the config is an error everywhere; the message names the
+exact key). What IS command/stage-scoped is the *path-existence* layer
+(binary/model files), which only runs just before the server that needs them
+launches — `join` never touches it, and `describe` never validates `[ocr]`
+model paths (§8.5). Per-command scoping of the structural checks was
+considered and declined: it would mean a command→keys map that must track the
+§13.3 stage table forever, to convert a clear self-explanatory error into a
+pass — revisit only on real user reports of being blocked by an irrelevant
+key.
 
 ```toml
 [llama]
