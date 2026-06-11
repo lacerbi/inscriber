@@ -26,21 +26,21 @@ Given a PDF (local file, or a URL from a supported paper repository),
 - **Split files** — the document divided into `main`, `appendix`, and
   `backmatter` parts (disable with `--no-split`).
 - A **BibTeX entry** for the paper, when the document is judged citable
-  (default `auto` mode; for arXiv inputs it prefers the *published* version of
+  (default `auto` mode; for arXiv inputs it prefers the _published_ version of
   the preprint when one exists). Online lookups send only the extracted title
   or arXiv ID — never the document — and under `--offline` it degrades to a
   clearly-marked, fully-local best-effort entry. `--bibtex-mode off` disables
   it; `--bibtex` forces the classic always-look-up mode.
 
-> **Accuracy.** The output is a best-effort machine transcription, not a
-> faithful copy. Body text and table values are generally reliable; residual
-> errors concentrate in complex table structure (multi-level headers) and in
-> dense math, where misreads stay plausible-looking (a hat accent read as a
-> dot, `mild` → `mid` in a subscript). An LLM consuming the Markdown tolerates
-> this noise well; for critical use, verify against the PDF — the
-> [`/inscribe` skill](#convert--verify-with-agent-skills) automates exactly
-> that. Every generated file ends with a short notice saying it was
-> machine-transcribed.
+> ⚠️ **Accuracy.** The output is a best-effort machine transcription, not a
+> faithful copy, and **will** contain errors. Body text and table values are
+> generally reliable; errors take the form of missing/repeated sentences near
+> non-standard page formatting, typos, missing pieces and structural issues in
+> complex equations or tables, or image descriptions missing or misrepresenting
+> parts of the figure. An LLM consuming the Markdown tolerates this noise well;
+> for critical use, you **must** verify against the PDF — the [`/inscribe` skill](#convert--verify-with-agent-skills)
+> automates that step. Every generated file ends with a short notice saying it
+> was machine-transcribed.
 
 Results are **cached** (content-addressed, per page / figure / table), so
 re-running with different output options takes seconds. Cache keys cover the
@@ -109,11 +109,11 @@ and a multimodal projector (`mmproj`). `inscriber` uses two such pairs —
 DeepSeek-OCR for OCR + figure grounding, Gemma 4 for figure descriptions and
 table restructuring:
 
-| model | role | download |
-| ----- | ---- | -------- |
-| **DeepSeek-OCR** BF16 *(recommended)* | OCR + figure grounding | [model (5.9 GB)](https://huggingface.co/sabafallah/DeepSeek-OCR-GGUF/resolve/main/deepseek-ocr-bf16.gguf?download=true) · [mmproj (0.8 GB)](https://huggingface.co/sabafallah/DeepSeek-OCR-GGUF/resolve/main/mmproj-deepseek-ocr-bf16.gguf?download=true) |
-| DeepSeek-OCR Q8_0 *(smaller, also verified)* | OCR + figure grounding | [model (3.1 GB)](https://huggingface.co/ggml-org/DeepSeek-OCR-GGUF/resolve/main/DeepSeek-OCR-Q8_0.gguf?download=true) · [mmproj (0.4 GB)](https://huggingface.co/ggml-org/DeepSeek-OCR-GGUF/resolve/main/mmproj-DeepSeek-OCR-Q8_0.gguf?download=true) |
-| **Gemma 4 E4B** QAT Q4_K_XL | figure description + tables | [model (4.2 GB)](https://huggingface.co/unsloth/gemma-4-E4B-it-qat-GGUF/resolve/main/gemma-4-E4B-it-qat-UD-Q4_K_XL.gguf?download=true) · [mmproj (1.0 GB)](https://huggingface.co/unsloth/gemma-4-E4B-it-qat-GGUF/resolve/main/mmproj-BF16.gguf?download=true) |
+| model                                         | role                        | download                                                                                                                                                                                                                                                       |
+| --------------------------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **DeepSeek-OCR** BF16 _(recommended)_         | OCR + figure grounding      | [model (5.9 GB)](https://huggingface.co/sabafallah/DeepSeek-OCR-GGUF/resolve/main/deepseek-ocr-bf16.gguf?download=true) · [mmproj (0.8 GB)](https://huggingface.co/sabafallah/DeepSeek-OCR-GGUF/resolve/main/mmproj-deepseek-ocr-bf16.gguf?download=true)      |
+| DeepSeek-OCR Q8_0 _(smaller, also verified)_  | OCR + figure grounding      | [model (3.1 GB)](https://huggingface.co/ggml-org/DeepSeek-OCR-GGUF/resolve/main/DeepSeek-OCR-Q8_0.gguf?download=true) · [mmproj (0.4 GB)](https://huggingface.co/ggml-org/DeepSeek-OCR-GGUF/resolve/main/mmproj-DeepSeek-OCR-Q8_0.gguf?download=true)          |
+| **Gemma 4 E4B** QAT Q4_K_XL                   | figure description + tables | [model (4.2 GB)](https://huggingface.co/unsloth/gemma-4-E4B-it-qat-GGUF/resolve/main/gemma-4-E4B-it-qat-UD-Q4_K_XL.gguf?download=true) · [mmproj (1.0 GB)](https://huggingface.co/unsloth/gemma-4-E4B-it-qat-GGUF/resolve/main/mmproj-BF16.gguf?download=true) |
 
 (Sizes are decimal GB, matching what `inscriber setup` prints while downloading.)
 
@@ -219,20 +219,20 @@ them with `inscriber join`. Say "no verification" to stop after the conversion.
 `inscriber --help` shows the full surface; every `config.example.toml` field
 has a matching flag. Highlights:
 
-| flag                                                          | meaning                                                       |
-| ------------------------------------------------------------- | ------------------------------------------------------------- |
+| flag                                                          | meaning                                                          |
+| ------------------------------------------------------------- | ---------------------------------------------------------------- |
 | `--ocr-resolution {tiny,small,base,large,gundam}`             | OCR render quality (default `gundam`, 2048px; `large` is faster) |
-| `--figure-mode {describe-only,describe-and-keep,placeholder}` | how figures render                                            |
-| `--no-figures`                                                | skip figure detection and description entirely                |
-| `--no-table-refine`                                           | keep raw OCR tables (skip VLM restructuring)                  |
-| `--name NAME` / `--no-bibtex-name`                            | explicit output base name / never name by BibTeX citation key |
-| `--no-full-suffix`                                            | full document as `{base}.md` instead of `{base}_full.md`      |
-| `--no-split` / `--page-numbers` / `--page-separators`         | output options                                                |
-| `--pages RANGE`                                               | page selection, e.g. `"1-10"`, `"3"`, `"5-"`                  |
-| `--bibtex-mode {off,on,auto}` / `--bibtex-in-doc`             | BibTeX mode (default `auto`; `--bibtex` ⇒ `on`)               |
-| `--offline`                                                   | no network: URL input + online BibTeX sources disabled        |
-| `--mode {sequential,concurrent}`                              | one model resident at a time (default) vs. both (needs VRAM)  |
-| `--no-cache` / `--refresh`                                    | cache control                                                 |
+| `--figure-mode {describe-only,describe-and-keep,placeholder}` | how figures render                                               |
+| `--no-figures`                                                | skip figure detection and description entirely                   |
+| `--no-table-refine`                                           | keep raw OCR tables (skip VLM restructuring)                     |
+| `--name NAME` / `--no-bibtex-name`                            | explicit output base name / never name by BibTeX citation key    |
+| `--no-full-suffix`                                            | full document as `{base}.md` instead of `{base}_full.md`         |
+| `--no-split` / `--page-numbers` / `--page-separators`         | output options                                                   |
+| `--pages RANGE`                                               | page selection, e.g. `"1-10"`, `"3"`, `"5-"`                     |
+| `--bibtex-mode {off,on,auto}` / `--bibtex-in-doc`             | BibTeX mode (default `auto`; `--bibtex` ⇒ `on`)                  |
+| `--offline`                                                   | no network: URL input + online BibTeX sources disabled           |
+| `--mode {sequential,concurrent}`                              | one model resident at a time (default) vs. both (needs VRAM)     |
+| `--no-cache` / `--refresh`                                    | cache control                                                    |
 
 GPU offload is automatic by default (`n_gpu_layers = "auto"` lets llama.cpp fit
 as many layers into VRAM as it can); override per server with `--ocr-ngl` /
