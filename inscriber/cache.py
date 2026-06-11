@@ -245,7 +245,10 @@ def make_vlm_key(
             raise ValueError("the raster scheme needs page_image_hash + crop_bbox + crop_padding")
         body["page_image"] = page_image_hash
         body["crop_bbox"] = list(crop_bbox)
-        body["crop_padding"] = crop_padding
+        # float() so an int from config.toml (crop_padding = 0) serializes
+        # identically to the manifest's float()-coerced read — json renders
+        # 0 and 0.0 differently, which would split run/describe keys.
+        body["crop_padding"] = float(crop_padding)
     else:
         body["crop"] = figure_crop_hash
     payload = json.dumps(body, sort_keys=True)
@@ -294,7 +297,9 @@ def make_table_key(
     }
     if crop_bbox is not None:
         body["crop_bbox"] = list(crop_bbox)
-        body["crop_padding"] = crop_padding
+        # float() for int/float JSON identity (see make_vlm_key) — a no-op for
+        # the float constant the table pass passes today (warm keys preserved).
+        body["crop_padding"] = float(crop_padding)
     payload = json.dumps(body, sort_keys=True)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 

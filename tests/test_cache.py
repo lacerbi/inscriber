@@ -11,6 +11,7 @@ from inscriber.cache import (
     OcrCache,
     file_identity,
     make_ocr_key,
+    make_table_key,
     make_vlm_key,
     sha256_bytes,
 )
@@ -109,6 +110,18 @@ def test_make_vlm_key_raster_scheme():
                      crop_bbox=(0, 0, 1, 1), crop_padding=0.02, **common)
     with pytest.raises(ValueError):
         make_vlm_key(page_image_hash="r1", **common)  # missing bbox/padding
+    # int/float padding identity: config.toml `crop_padding = 0` arrives as a
+    # Python int in `run`, while `describe` reads the manifest through float();
+    # json renders 0 and 0.0 differently, so the key must normalize — or
+    # run/describe would silently stop sharing (review of batch 3).
+    assert make_vlm_key(**{**raster, "crop_padding": 0}, **common) == make_vlm_key(
+        **{**raster, "crop_padding": 0.0}, **common
+    )
+    assert make_table_key(
+        page_image_hash="r1", crop_bbox=(0.1, 0.2, 0.8, 0.9), crop_padding=1, **common
+    ) == make_table_key(
+        page_image_hash="r1", crop_bbox=(0.1, 0.2, 0.8, 0.9), crop_padding=1.0, **common
+    )
 
 
 def test_cache_put_get_roundtrip(tmp_path):

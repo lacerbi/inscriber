@@ -1315,8 +1315,11 @@ rasters for figure-only pages, so the hash rides the manifest); an **old
 bundle** lacking those fields degrades to the legacy crop-bytes hash
 (recompute at worst, never a crash). One consequence: the bundle's crop PNGs
 are *derived data* — hand-replacing one does not change the key (use
-`--refresh`). The `kind` discriminator keeps figure entries structurally
-disjoint from table/probe entries in the shared store.
+`--refresh`), and conversely hand-editing a figure's `bbox_norm` in the
+manifest only re-keys the description, it does **not** re-cut the crop
+(`describe` sends the stored crop file; re-run `ocr` to change crops). The
+`kind` discriminator keeps figure entries structurally disjoint from
+table/probe entries in the shared store.
 
 The key uses the **fully assembled prompt — context text included** — not just a
 template name; otherwise changing `context_chars` or the page text would serve a

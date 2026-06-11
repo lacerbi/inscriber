@@ -25,7 +25,10 @@ together the figure-description cache-key material (DESIGN §9.6: keys are
 stores no rasters for figure-only pages. Both additive (``bundle_schema``
 stays 1); ``describe`` falls back to hashing the stored crop bytes without
 them. The crop PNGs themselves are **derived data**: hand-replacing one does
-not change the cache key (use ``--refresh`` to recompute descriptions).
+not change the cache key (use ``--refresh`` to recompute descriptions), and
+hand-editing a figure's ``bbox_norm`` only re-keys the description without
+re-cutting the crop (``describe`` sends the stored crop file; re-run ``ocr``
+to change crops).
 """
 
 from __future__ import annotations
