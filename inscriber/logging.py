@@ -33,10 +33,13 @@ def setup_logging(verbose: int = 0, quiet: bool = False) -> logging.Logger:
     # inside the logging handler when a message interpolates a non-ASCII model
     # path / URL / paper title — escape unencodable characters instead of losing
     # the whole record. (argparse help text got the same treatment in cli.py.)
-    try:
-        stream.reconfigure(errors="backslashreplace")
-    except (AttributeError, OSError, ValueError):
-        pass  # not a reconfigurable text stream (test doubles, exotic redirects)
+    # getattr: reconfigure is TextIOWrapper-specific (absent on test doubles).
+    reconfigure = getattr(stream, "reconfigure", None)
+    if reconfigure is not None:
+        try:
+            reconfigure(errors="backslashreplace")
+        except (OSError, ValueError):
+            pass  # not a reconfigurable text stream (exotic redirects)
     handler = logging.StreamHandler(stream=stream)
     handler.setLevel(level)
     handler.setFormatter(logging.Formatter("%(levelname)s %(message)s"))

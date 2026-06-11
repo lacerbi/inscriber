@@ -230,7 +230,7 @@ def make_vlm_key(
     raster_scheme = page_image_hash is not None
     if raster_scheme == (figure_crop_hash is not None):
         raise ValueError("make_vlm_key needs exactly one image-identity scheme")
-    body = {
+    body: dict[str, object] = {
         "kind": "figure-description",
         "backend": vlm_backend_name,
         "model": vlm_model_identity,
@@ -284,7 +284,7 @@ def make_table_key(
     fields are added **conditionally** so whole-page-path keys stay
     byte-identical to the pre-crop scheme (warm caches preserved).
     """
-    body = {
+    body: dict[str, object] = {
         "kind": "table-restructure",
         "page_image": page_image_hash,
         "backend": vlm_backend_name,
@@ -296,6 +296,8 @@ def make_table_key(
         "chat_template_kwargs": chat_template_kwargs,
     }
     if crop_bbox is not None:
+        if crop_padding is None:
+            raise ValueError("crop_bbox requires crop_padding")
         body["crop_bbox"] = list(crop_bbox)
         # float() for int/float JSON identity (see make_vlm_key) — a no-op for
         # the float constant the table pass passes today (warm keys preserved).

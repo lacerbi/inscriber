@@ -34,7 +34,9 @@ logger = get_logger()
 def citable_provenance(url: str | None) -> bool:
     """Whether ``url`` matches any of the seven recognized paper repositories
     (the domain-handler configs, DESIGN §6) — citable by construction."""
-    return bool(url) and find_handler(url) is not None
+    if not url:
+        return False
+    return find_handler(url) is not None
 
 
 def _is_preprint_venue(venue) -> bool:

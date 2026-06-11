@@ -64,3 +64,9 @@ ignore = ["E501"]  # line length handled by formatter; long ported strings exemp
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+
+[[tool.mypy.overrides]]
+# No published stubs (fitz/pymupdf, defusedxml) or conditionally absent on
+# this interpreter (tomli is py<3.11-only); treat as Any rather than erroring.
+module = ["fitz", "fitz.*", "defusedxml", "defusedxml.*", "tomli"]
+ignore_missing_imports = true

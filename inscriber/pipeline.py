@@ -554,6 +554,8 @@ def _refine_tables(cfg: RunConfig, pages: list[_Page], session: _VlmSession) -> 
     done = 0
     refined = 0
     for pg, context, blob_count, entries in work:
+        raster_png = pg.raster_png
+        assert raster_png is not None  # guarded when building `work` above
         replacements: list[tuple[int, int, str]] = []
         for index, start, end, blob, region in entries:
             done += 1
@@ -571,7 +573,7 @@ def _refine_tables(cfg: RunConfig, pages: list[_Page], session: _VlmSession) -> 
             # crop's deterministic inputs — so run/describe share entries and a
             # cache hit needs no pixel work (see make_table_key).
             key = make_table_key(
-                page_image_hash=sha256_bytes(pg.raster_png),
+                page_image_hash=sha256_bytes(raster_png),
                 vlm_backend_name=proto.name,
                 vlm_model_identity=model_id,
                 vlm_mmproj_identity=mmproj_id,
@@ -588,10 +590,10 @@ def _refine_tables(cfg: RunConfig, pages: list[_Page], session: _VlmSession) -> 
                 replacements.append((start, end, cached))
                 refined += 1
                 continue
-            image = pg.raster_png
+            image: bytes | None = raster_png
             if region is not None:
                 image = crop_region_bytes(
-                    pg.raster_png, region.bbox_norm, padding=TABLE_CROP_PADDING
+                    raster_png, region.bbox_norm, padding=TABLE_CROP_PADDING
                 )
                 if image is None:  # unreachable for real rasters (span-guarded)
                     logger.warning(

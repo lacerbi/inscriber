@@ -17,6 +17,7 @@ pip install -e ".[dev]"
 pytest                            # full suite; mocked inference, no GPU/models needed
 pytest tests/test_tables.py -k locator   # single file / keyword
 ruff check                        # lint (config in pyproject.toml)
+mypy inscriber                    # type check (clean since 2026-06-11; keep it so)
 
 python -m inscriber run paper.pdf -o out/   # real runs need llama.cpp + GGUFs
 ```

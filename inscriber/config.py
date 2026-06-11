@@ -6,11 +6,16 @@ Validation is two-layer (review Fix 3):
 
 * **structural** — enum membership, numeric ranges, types. Runs always, right
   after the merge. Raises :class:`ConfigError`.
-* **path-existence** — llama binary, model/mmproj GGUFs. Command/stage-aware and
-  invoked only just before a server actually launches (so ``--version`` / config
-  errors never touch the filesystem, ``--ocr-endpoint`` bypasses OCR-model checks,
-  and ``describe`` never validates ``[ocr].*``). This is DESIGN §16's "validate
-  before any model loads".
+* **path-existence** — llama binary, model/mmproj GGUFs. Command/stage-aware,
+  checked **inline in the pipeline at identity-resolution time**
+  (``pipeline._ocr_identities`` / ``_vlm_identities`` — model+mmproj, with the
+  endpoint bypass) and at binary resolution (``llama_build_identity`` /
+  ``LlamaServerManager``) — all before any server launches. So ``--version`` /
+  config errors never touch the filesystem, ``--ocr-endpoint`` bypasses
+  OCR-model checks, and ``describe`` never validates ``[ocr]`` model paths.
+  This is DESIGN §16's "validate before any model loads". (Structural
+  validation, by contrast, is deliberately **global** across commands —
+  DESIGN §13.1's recorded policy.)
 """
 
 from __future__ import annotations
@@ -317,47 +322,3 @@ def find_binary(bin_dir: str, base_name: str, os_name: str | None = None) -> Pat
         return candidate if candidate.exists() else None
     found = shutil.which(base_name)
     return Path(found) if found else None
-
-
-def _check_model_pair(label: str, model: str, mmproj: str, errors: list[str]) -> None:
-    for kind, value in (("model", model), ("mmproj", mmproj)):
-        if not value:
-            errors.append(f"{label}.{kind} is not configured (set it in config or via CLI)")
-        elif not Path(value).expanduser().is_file():
-            errors.append(f"{label}.{kind} file not found: {value}")
-
-
-def validate_ocr_paths(cfg: RunConfig) -> None:
-    """Validate the llama binary + OCR model/mmproj (run/ocr, before OCR launch).
-
-    Bypassed entirely when ``ocr.endpoint`` is set (no server is spawned).
-    """
-    if cfg.ocr.endpoint:
-        return
-    errors: list[str] = []
-    if find_binary(cfg.llama.bin_dir, "llama-server") is None:
-        errors.append(
-            "llama-server binary not found "
-            f"(llama.bin_dir={cfg.llama.bin_dir!r}; not on PATH either)"
-        )
-    _check_model_pair("ocr", cfg.ocr.model, cfg.ocr.mmproj, errors)
-    if errors:
-        raise ConfigError("OCR configuration error:\n  - " + "\n  - ".join(errors))
-
-
-def validate_vlm_paths(cfg: RunConfig) -> None:
-    """Validate the llama binary + VLM model/mmproj (run/describe, before VLM launch).
-
-    Bypassed when ``vlm.endpoint`` is set.
-    """
-    if cfg.vlm.endpoint:
-        return
-    errors: list[str] = []
-    if find_binary(cfg.llama.bin_dir, "llama-server") is None:
-        errors.append(
-            "llama-server binary not found "
-            f"(llama.bin_dir={cfg.llama.bin_dir!r}; not on PATH either)"
-        )
-    _check_model_pair("vlm", cfg.vlm.model, cfg.vlm.mmproj, errors)
-    if errors:
-        raise ConfigError("VLM configuration error:\n  - " + "\n  - ".join(errors))
