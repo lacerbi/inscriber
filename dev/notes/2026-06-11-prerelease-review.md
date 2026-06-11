@@ -1,12 +1,13 @@
 # 2026-06-11 — Pre-release codebase review: remaining findings (handoff)
 
-**Status: mostly resolved (2026-06-11, batches 1–2).** Batch 1 (the mechanical
-tier — A1–A6, C1, B3, B4, E2, + the C4 comment) and batch 2 (input hardening —
-D1 via a new `defusedxml` dependency, D2, D3) were fixed the same day, and
-**B1 was declined** (maintainer decision; DESIGN §10.3b amended to state the
-actual behavior instead). Per-item status lines below. **Still open: B2, B5
-(parity-bound, decision only), C2+C3 (one cache-orphaning change), E1,
-E3 (watch).**
+**Status: mostly resolved (2026-06-11, batches 1–3).** Batch 1 (the mechanical
+tier — A1–A6, C1, B3, B4, E2, + the C4 comment), batch 2 (input hardening —
+D1 via a new `defusedxml` dependency, D2, D3), and batch 3 (the C2+C3
+figure-cache-key change, done together so warm figure entries were orphaned
+exactly once) were fixed the same day, and **B1 was declined** (maintainer
+decision; DESIGN §10.3b amended to state the actual behavior instead).
+Per-item status lines below. **Still open: B2, B5 (parity-bound, decision
+only), E1, E3 (watch).**
 
 This note is the self-contained record of the
 findings from the 2026-06-11 full-codebase pre-release review that were **not**
@@ -252,6 +253,17 @@ Before touching anything here, read `AGENTS.md` ("Where truth lives",
   mirror how `make_table_key` threads conditional fields, and pin the
   run↔describe key equality with a test like
   `test_run_then_describe_share_table_cache`.
+* **Status:** ✅ fixed 2026-06-11 (with C3, one orphaning event). One wrinkle
+  beyond the writeup: the bundle stores **no rasters for figure-only pages**,
+  so `describe` cannot hash raster bytes — the manifest gained additive
+  per-page `raster_sha256` + top-level `figure_crop_padding` (the ocr-time
+  knob `describe` otherwise cannot know; `bundle_schema` stays 1). Old
+  bundles fall back to the legacy crop-bytes key (recompute, never a crash —
+  pinned). Crop PNGs are now explicitly derived data (hand-replacing one
+  needs `--refresh`). Pinned by
+  `test_run_then_describe_share_figure_cache` — a describe over a
+  **re-encoded** crop (same pixels, different bytes) stays a cache hit;
+  verified failing on pre-change code. DESIGN §8.5/§8.6/§9.6 updated.
 
 ### C3. [LOW] `make_vlm_key` lacks a `kind` discriminator
 
@@ -261,6 +273,10 @@ Before touching anything here, read `AGENTS.md` ("Where truth lives",
   `"kind": "figure-description"` for structural disjointness.
 * **Caveat:** changes every figure key (orphans warm entries) — fold into the
   same change as C2 so caches are only orphaned once.
+* **Status:** ✅ fixed 2026-06-11 — `"kind": "figure-description"` in both key
+  shapes (raster scheme and legacy crop-bytes fallback), folded into the C2
+  change as prescribed. `make_vlm_key` now also validates that exactly one
+  image-identity scheme is supplied (`tests/test_cache.py`).
 
 ### C4. [LOW] `GemmaVlmBackend.image_first` changes output but is not key material
 

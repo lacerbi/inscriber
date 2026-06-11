@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from inscriber.cache import (
     OCR_VALUE_SCHEMA,
     OcrCache,
@@ -76,6 +78,37 @@ def test_make_vlm_key_includes_thinking_kwargs():
         **{**base, "server_identity": "version: 9587 (d2e22ed)"},
         chat_template_kwargs={"enable_thinking": True},
     ) != k1
+
+
+def test_make_vlm_key_raster_scheme():
+    # Review C2+C3: the preferred image identity is (raster, bbox, padding) —
+    # the crop's deterministic inputs — with the crop-bytes hash kept only as
+    # the old-bundle fallback; exactly one scheme per key.
+    common = dict(
+        vlm_backend_name="gemma",
+        vlm_model_identity="m:1:h",
+        vlm_mmproj_identity="mp:1:h",
+        server_identity="version: 9587 (d2e22ed)",
+        full_assembled_prompt="prompt",
+        sampling={"temperature": 0, "seed": 0},
+    )
+    raster = dict(page_image_hash="r1", crop_bbox=(0.1, 0.2, 0.8, 0.9), crop_padding=0.02)
+    k = make_vlm_key(**raster, **common)
+    assert k == make_vlm_key(**raster, **common)
+    # raster / bbox / padding are each key material:
+    assert make_vlm_key(**{**raster, "page_image_hash": "r2"}, **common) != k
+    assert make_vlm_key(**{**raster, "crop_bbox": (0.1, 0.2, 0.8, 0.91)}, **common) != k
+    assert make_vlm_key(**{**raster, "crop_padding": 0.03}, **common) != k
+    # the legacy crop-bytes scheme yields a different key space:
+    assert make_vlm_key(figure_crop_hash="c1", **common) != k
+    # exactly one scheme, fully specified:
+    with pytest.raises(ValueError):
+        make_vlm_key(**common)
+    with pytest.raises(ValueError):
+        make_vlm_key(figure_crop_hash="c1", page_image_hash="r1",
+                     crop_bbox=(0, 0, 1, 1), crop_padding=0.02, **common)
+    with pytest.raises(ValueError):
+        make_vlm_key(page_image_hash="r1", **common)  # missing bbox/padding
 
 
 def test_cache_put_get_roundtrip(tmp_path):

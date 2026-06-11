@@ -12,20 +12,19 @@ Legend: `[ ]` todo · `[!]` blocked.
       2026-06-11 full-codebase review's non-blocking items, written up as a
       self-contained handoff list (each with location, rationale, suggested
       fix, and pinned-behavior/cache-key caveats, **per-item statuses
-      inline**): `dev/notes/2026-06-11-prerelease-review.md`. Batch 1 (the
-      mechanical tier: both HIGHs, the robustness/UX items, atomic hash
-      sidecar, reserved-name/alt-text output fixes, token-cap constant) and
-      batch 2 (input hardening: defusedxml for arXiv Atom, `http://` upgrade
-      + plaintext-fetch warning, suffix host matching) were fixed 2026-06-11,
-      and the `dehyphenate` finding was declined (DESIGN §10.3b now states
-      the actual behavior). **Still open:** figure-cache key fragile to
-      PNG-encoder churn (C2+C3 — one cache-orphaning change; needs additive
-      bundle manifest fields, the bundle stores no rasters for figure-only
-      pages), GFM-table sanitation acceptance (B2), `tests/conftest.py`
-      dedup (E1), plus the decision-only/watch items (B5 parity-bound
-      splitter miss, E3). The blocking items (SIGTERM orphan backstop,
-      capped streaming download, concurrent-port gate, README sizes) were
-      fixed pre-release.
+      inline**): `dev/notes/2026-06-11-prerelease-review.md`. Batches 1–3
+      were fixed 2026-06-11 — the mechanical tier (both HIGHs, robustness/UX,
+      atomic hash sidecar, reserved-name/alt-text output fixes, token-cap
+      constant), input hardening (defusedxml for arXiv Atom, `http://`
+      upgrade + plaintext-fetch warning, suffix host matching), and the
+      figure-cache key move to `(raster, bbox, padding)` + `kind` (C2+C3,
+      warm figure entries orphaned once; additive manifest fields) — and the
+      `dehyphenate` finding was declined (DESIGN §10.3b now states the
+      actual behavior). **Still open:** GFM-table sanitation acceptance
+      (B2), `tests/conftest.py` dedup (E1), plus the decision-only/watch
+      items (B5 parity-bound splitter miss, E3). The blocking items (SIGTERM
+      orphan backstop, capped streaming download, concurrent-port gate,
+      README sizes) were fixed pre-release.
 
 ## Table-restructuring pass (DESIGN §9.7)
 

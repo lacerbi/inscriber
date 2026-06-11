@@ -190,7 +190,10 @@ class OcrCache:
 
 def make_vlm_key(
     *,
-    figure_crop_hash: str,
+    figure_crop_hash: str | None = None,
+    page_image_hash: str | None = None,
+    crop_bbox: tuple[float, float, float, float] | None = None,
+    crop_padding: float | None = None,
     vlm_backend_name: str,
     vlm_model_identity: str,
     vlm_mmproj_identity: str,
@@ -199,28 +202,53 @@ def make_vlm_key(
     sampling: dict,
     chat_template_kwargs: dict | None = None,
 ) -> str:
-    """VLM cache key (DESIGN §9.6).
+    """Figure-description cache key (DESIGN §9.6).
 
-    Keyed on the **fully assembled prompt — context text included** — so changing
-    ``context_chars`` or the page text doesn't serve a stale description.
-    ``chat_template_kwargs`` (e.g. Gemma thinking activation) changes outputs, so
-    it is key material too, as is ``server_identity`` (the llama.cpp build — see
-    :func:`make_ocr_key`). (No ``max_tokens``: generation is bounded only by
-    ``ctx_size``, which doesn't change a non-truncated output.)
+    Image identity comes in one of two shapes:
+
+    * **(raster, bbox, padding)** — the preferred scheme (2026-06-11, mirroring
+      :func:`make_table_key`): the crop's *pixels* are fully determined by the
+      verbatim page raster + ``bbox_norm`` + ``figure.crop_padding``, so keying
+      on those — rather than on a hash of the re-encoded crop PNG — is immune
+      to PNG-encoder (Pillow) churn and shared between ``run`` and ``describe``
+      regardless of which Pillow wrote the bundle's crop files.
+    * **``figure_crop_hash``** — the crop-bytes fallback, used only for old
+      bundles whose manifest predates the per-page ``raster_sha256`` /
+      ``figure_crop_padding`` fields (§8.5).
+
+    Exactly one shape must be supplied. Keyed on the **fully assembled prompt —
+    context text included** — so changing ``context_chars`` or the page text
+    doesn't serve a stale description. ``chat_template_kwargs`` (e.g. Gemma
+    thinking activation) changes outputs, so it is key material too, as is
+    ``server_identity`` (the llama.cpp build — see :func:`make_ocr_key`).
+    (No ``max_tokens``: generation is bounded only by ``ctx_size``, which
+    doesn't change a non-truncated output.) The ``kind`` discriminator keeps
+    figure entries structurally disjoint from table/probe entries in the
+    shared store. ⚠️ Both the raster scheme and ``kind`` were added together
+    (2026-06-11) so warm figure caches are orphaned exactly once.
     """
-    payload = json.dumps(
-        {
-            "crop": figure_crop_hash,
-            "backend": vlm_backend_name,
-            "model": vlm_model_identity,
-            "mmproj": vlm_mmproj_identity,
-            "server": server_identity,
-            "prompt": full_assembled_prompt,
-            "sampling": sampling,
-            "chat_template_kwargs": chat_template_kwargs,
-        },
-        sort_keys=True,
-    )
+    raster_scheme = page_image_hash is not None
+    if raster_scheme == (figure_crop_hash is not None):
+        raise ValueError("make_vlm_key needs exactly one image-identity scheme")
+    body = {
+        "kind": "figure-description",
+        "backend": vlm_backend_name,
+        "model": vlm_model_identity,
+        "mmproj": vlm_mmproj_identity,
+        "server": server_identity,
+        "prompt": full_assembled_prompt,
+        "sampling": sampling,
+        "chat_template_kwargs": chat_template_kwargs,
+    }
+    if raster_scheme:
+        if crop_bbox is None or crop_padding is None:
+            raise ValueError("the raster scheme needs page_image_hash + crop_bbox + crop_padding")
+        body["page_image"] = page_image_hash
+        body["crop_bbox"] = list(crop_bbox)
+        body["crop_padding"] = crop_padding
+    else:
+        body["crop"] = figure_crop_hash
+    payload = json.dumps(body, sort_keys=True)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 

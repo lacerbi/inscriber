@@ -17,6 +17,15 @@ Pages containing ``<table>`` blobs also carry their **verbatim** page raster
 no PDF present; verbatim bytes keep table cache keys identical between ``run``
 and ``describe``. The field is additive — old readers ignore it, so
 ``bundle_schema`` stays 1; old bundles without it skip table refinement.
+
+Every page also carries ``raster_sha256`` (the verbatim raster's hash) and the
+manifest a top-level ``figure_crop_padding`` (the ocr-time ``[figure]`` knob) —
+together the figure-description cache-key material (DESIGN §9.6: keys are
+``(raster, bbox, padding)``, immune to PNG-encoder churn), since the bundle
+stores no rasters for figure-only pages. Both additive (``bundle_schema``
+stays 1); ``describe`` falls back to hashing the stored crop bytes without
+them. The crop PNGs themselves are **derived data**: hand-replacing one does
+not change the cache key (use ``--refresh`` to recompute descriptions).
 """
 
 from __future__ import annotations
@@ -50,6 +59,7 @@ class BundlePage:
     regions: list[Region] = field(default_factory=list)
     figures: list[Figure] = field(default_factory=list)
     raster_path: str | None = None  # relative page-raster path (table pages only)
+    raster_sha256: str | None = None  # verbatim-raster hash (figure cache key, §9.6)
 
 
 @dataclass
@@ -59,6 +69,9 @@ class Bundle:
     ocr: dict
     figure_detect: str
     pages: list[BundlePage]
+    # The ocr-time [figure].crop_padding — figure cache-key material (§9.6).
+    # None on bundles predating the field (describe then keys on crop bytes).
+    figure_crop_padding: float | None = None
 
     @property
     def source_name(self) -> str:
@@ -84,10 +97,14 @@ def write_bundle(
     page_results: list[OcrPageResult],
     page_figures: dict[int, list[Figure]],
     page_rasters: dict[int, str] | None = None,
+    page_raster_hashes: dict[int, str] | None = None,
+    figure_crop_padding: float | None = None,
     created_at: str = "",
 ) -> Path:
     """Write ``manifest.json`` (crops are expected already saved under ``figures/``;
     likewise ``page_rasters`` maps page numbers to already-saved raster paths).
+    ``page_raster_hashes`` + ``figure_crop_padding`` are the figure cache-key
+    material (§9.6) — additive fields, omitted when not given.
 
     Returns the bundle directory.
     """
@@ -104,6 +121,9 @@ def write_bundle(
         raster = (page_rasters or {}).get(res.page_number)
         if raster:
             page_json["raster_path"] = raster
+        raster_hash = (page_raster_hashes or {}).get(res.page_number)
+        if raster_hash:
+            page_json["raster_sha256"] = raster_hash
         pages_json.append(page_json)
 
     manifest = {
@@ -115,6 +135,8 @@ def write_bundle(
         "figure_detect": figure_detect,
         "pages": pages_json,
     }
+    if figure_crop_padding is not None:
+        manifest["figure_crop_padding"] = figure_crop_padding
     (bundle_dir / "manifest.json").write_text(
         json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
@@ -164,13 +186,16 @@ def read_bundle(bundle_dir: str | Path) -> Bundle:
                 regions=regions,
                 figures=figures,
                 raster_path=raster_path,
+                raster_sha256=p.get("raster_sha256"),
             )
         )
 
+    crop_padding = manifest.get("figure_crop_padding")
     return Bundle(
         dir=bundle_dir,
         source=manifest.get("source", {}),
         ocr=manifest.get("ocr", {}),
         figure_detect=manifest.get("figure_detect", "auto"),
         pages=pages,
+        figure_crop_padding=float(crop_padding) if crop_padding is not None else None,
     )

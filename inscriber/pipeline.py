@@ -122,6 +122,17 @@ class _Page:
     raster_png: bytes | None = None  # verbatim page render (table restructuring input)
     regions: list[Region] = field(default_factory=list)  # grounded layout regions
     #   (the table pass crops to matched ``table`` regions, DESIGN §9.7)
+    # Verbatim-raster hash from a bundle manifest (figure cache key, §9.6) —
+    # in `run` it is computed from raster_png instead (see raster_hash()).
+    raster_sha256: str | None = None
+
+    def raster_hash(self) -> str | None:
+        """The verbatim page-raster hash, from the manifest or the bytes in hand."""
+        if self.raster_sha256:
+            return self.raster_sha256
+        if self.raster_png is not None:
+            return sha256_bytes(self.raster_png)
+        return None
 
 
 @contextmanager
@@ -651,17 +662,28 @@ def _vlm_describe(
     pages: list[_Page],
     crop_base: Path,
     session: _VlmSession,
+    *,
+    crop_padding: float | None = None,
 ) -> dict[str, str]:
     """Describe every figure (DESIGN §9). Cache-first; the shared ``session``
-    launches the VLM server only on a miss (and reuses the table pass's server)."""
-    tasks: list[tuple[Figure, str, bytes]] = []
+    launches the VLM server only on a miss (and reuses the table pass's server).
+
+    ``crop_padding`` is the OCR-TIME ``[figure].crop_padding`` the crops were
+    cut with — ``run`` passes ``cfg.figure.crop_padding``; ``describe`` passes
+    the bundle manifest's recorded value (the cfg knob is ocr-stage and ignored
+    at describe time, §8.5). It joins the (raster, bbox, padding) cache key
+    (§9.6); when it or the page's raster hash is unavailable (old bundle), the
+    key falls back to hashing the stored crop bytes.
+    """
+    tasks: list[tuple[Figure, str, bytes, str | None]] = []
     for pg in pages:
         context = build_page_context(pg.page_number, pg.page_text, cfg.figure.context_chars)
+        raster_hash = pg.raster_hash()
         for fig in pg.figures:
             if not fig.crop_path:
                 continue
             crop_bytes = (Path(crop_base) / fig.crop_path).read_bytes()
-            tasks.append((fig, context, crop_bytes))
+            tasks.append((fig, context, crop_bytes, raster_hash))
     if not tasks:
         return {}
 
@@ -672,10 +694,19 @@ def _vlm_describe(
     descriptions: dict[str, str] = {}
     keys: dict[str, str] = {}
     todo: list[tuple[Figure, str, bytes]] = []  # carries the key's prompt verbatim
-    for fig, context, crop_bytes in tasks:
+    for fig, context, crop_bytes, raster_hash in tasks:
         prompt = proto.build_prompt(context)
+        # Preferred key: the crop's deterministic inputs (raster, bbox, padding)
+        # — PNG-encoder-churn-immune and run↔describe-shared (§9.6). Crop-bytes
+        # hash only for old bundles missing the manifest fields.
+        image_key = (
+            {"page_image_hash": raster_hash, "crop_bbox": fig.bbox_norm,
+             "crop_padding": crop_padding}
+            if raster_hash is not None and crop_padding is not None
+            else {"figure_crop_hash": sha256_bytes(crop_bytes)}
+        )
         key = make_vlm_key(
-            figure_crop_hash=sha256_bytes(crop_bytes),
+            **image_key,
             vlm_backend_name=proto.name,
             vlm_model_identity=model_id,
             vlm_mmproj_identity=mmproj_id,
@@ -1007,6 +1038,11 @@ def run_ocr(cfg: RunConfig) -> list[str]:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(pg.png_bytes)
             page_rasters[pg.page_number] = rel
+        # Every page's verbatim-raster hash rides the manifest: the figure
+        # cache key is (raster, bbox, padding) (§9.6), and the bundle stores no
+        # rasters for figure-only pages — the hash is what lets `describe`
+        # share figure-description entries with `run`.
+        page_raster_hashes = {pg.page_number: sha256_bytes(pg.png_bytes) for pg in pages}
         source = {
             "source": resolved.source,
             "original_url": resolved.original_url,
@@ -1021,6 +1057,8 @@ def run_ocr(cfg: RunConfig) -> list[str]:
             page_results=page_results,
             page_figures=page_figures,
             page_rasters=page_rasters,
+            page_raster_hashes=page_raster_hashes,
+            figure_crop_padding=cfg.figure.crop_padding,
             created_at=_now(),
         )
     logger.info("wrote OCR bundle: %s", bdir)
@@ -1040,6 +1078,7 @@ def describe(cfg: RunConfig) -> list[str]:
             figures=p.figures,
             raster_png=(bundle.dir / p.raster_path).read_bytes() if p.raster_path else None,
             regions=p.regions,
+            raster_sha256=p.raster_sha256,  # figure cache-key material (§9.6)
         )
         for p in bundle.pages
     ]
@@ -1052,7 +1091,10 @@ def describe(cfg: RunConfig) -> list[str]:
         try:
             tables_refined = _refine_tables(cfg, pages, session)
             if figures_need_vlm:
-                descriptions = _vlm_describe(cfg, pages, bundle.dir, session)
+                descriptions = _vlm_describe(
+                    cfg, pages, bundle.dir, session,
+                    crop_padding=bundle.figure_crop_padding,  # ocr-time value, NOT cfg
+                )
             probe = _bibtex_probe(cfg, pages, session)
         finally:
             session.close()
@@ -1085,7 +1127,9 @@ def _run_body(cfg: RunConfig, resolved, base, out_dir, work, *, vlm_endpoint=Non
     try:
         tables_refined = _refine_tables(cfg, working, session)
         if figures_need_vlm:
-            descriptions = _vlm_describe(cfg, working, work, session)
+            descriptions = _vlm_describe(
+                cfg, working, work, session, crop_padding=cfg.figure.crop_padding
+            )
         probe = _bibtex_probe(cfg, working, session)
     finally:
         session.close()

@@ -363,3 +363,103 @@ def test_run_no_figures_offline_smoke(tmp_path, monkeypatch, hermetic_cache):
     assert "⟦INSCRIBER_FIG" not in text
     assert "Image description" not in text  # no figures described
     assert text.rstrip().endswith("*Transcribed with OCR; text may contain mistakes.*")
+
+
+# --------------------------------------------------------------------------- #
+# Figure-description cache key: (raster, bbox, padding) — review C2+C3
+# --------------------------------------------------------------------------- #
+
+
+def _counting_figure_mock(monkeypatch) -> list[str]:
+    """Re-patch ``chat_image`` (after ``_mock_inference``) to count figure calls."""
+    fig_calls: list[str] = []
+    raw = (FIXTURES / "deepseek_paper_p1_raw.txt").read_text(encoding="utf-8")
+
+    def counting_chat_image(self, *, image_png, prompt, max_tokens=None, sampling=None,
+                            timeout_s=None, image_first=True, chat_template_kwargs=None):
+        self.last_finish_reason = "stop"
+        self.last_completion_tokens = 10
+        if "<|grounding|>" in prompt:  # OCR grounding call
+            return raw
+        fig_calls.append(prompt)
+        return "<img_desc>A line chart trending upward.</img_desc>"
+
+    monkeypatch.setattr(ChatClient, "chat_image", counting_chat_image)
+    return fig_calls
+
+
+def _describe_cfg(models, out, bundle_dir):
+    dcfg = RunConfig(command="describe", input=str(bundle_dir))
+    dcfg.output.dir = str(out)
+    dcfg.llama.bin_dir = "/fake/bin"
+    dcfg.vlm.model = models["vlm"]
+    dcfg.vlm.mmproj = models["vlm_mmproj"]
+    return dcfg
+
+
+def test_run_then_describe_share_figure_cache(tmp_path, monkeypatch, hermetic_cache):
+    # Review C2: the figure key is (raster hash, bbox, padding) — a describe
+    # after a run is a pure cache hit, EVEN when the bundle's crop PNG was
+    # re-encoded by a different PNG writer (same pixels, different bytes).
+    import io
+
+    from PIL import Image
+    from PIL.PngImagePlugin import PngInfo
+
+    _mock_inference(monkeypatch)
+    fig_calls = _counting_figure_mock(monkeypatch)
+    models = _dummy_models(tmp_path)
+    out = tmp_path / "out"
+
+    pipeline.run(_base_cfg(tmp_path, models, out))
+    assert len(fig_calls) == 1
+
+    ocr_cfg = _base_cfg(tmp_path, models, out)
+    ocr_cfg.command = "ocr"
+    bundle_dir = Path(pipeline.run_ocr(ocr_cfg)[0])
+
+    # Simulate PNG-encoder (Pillow) churn: identical pixels, different bytes
+    # (an added tEXt chunk guarantees the byte difference).
+    crop = bundle_dir / "figures" / "fig_p1_1.png"
+    original = crop.read_bytes()
+    info = PngInfo()
+    info.add_text("Software", "a different png encoder")
+    buf = io.BytesIO()
+    Image.open(io.BytesIO(original)).save(buf, "PNG", pnginfo=info)
+    assert buf.getvalue() != original
+    crop.write_bytes(buf.getvalue())
+
+    pipeline.describe(_describe_cfg(models, out, bundle_dir))
+    assert len(fig_calls) == 1  # no second figure call: key is byte-independent
+
+
+def test_describe_old_bundle_falls_back_to_crop_hash(tmp_path, monkeypatch, hermetic_cache):
+    # An old bundle (manifest predating raster_sha256 / figure_crop_padding)
+    # still describes: the key falls back to hashing the stored crop bytes —
+    # a recompute, never a crash (DESIGN §9.6).
+    import json
+
+    _mock_inference(monkeypatch)
+    fig_calls = _counting_figure_mock(monkeypatch)
+    models = _dummy_models(tmp_path)
+    out = tmp_path / "out"
+
+    ocr_cfg = _base_cfg(tmp_path, models, out)
+    ocr_cfg.command = "ocr"
+    bundle_dir = Path(pipeline.run_ocr(ocr_cfg)[0])
+
+    manifest_path = bundle_dir / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest.pop("figure_crop_padding", None)
+    for p in manifest["pages"]:
+        p.pop("raster_sha256", None)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    pipeline.describe(_describe_cfg(models, out, bundle_dir))
+    assert len(fig_calls) == 1  # described via the fallback key
+    text = (out / "sample_paper_full.md").read_text(encoding="utf-8")
+    assert "A line chart trending upward." in text
+
+    # Same old bundle again: the fallback key itself caches normally.
+    pipeline.describe(_describe_cfg(models, out, bundle_dir))
+    assert len(fig_calls) == 1

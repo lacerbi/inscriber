@@ -12,7 +12,20 @@
 > `paper2llm`). It is written to be read entirely standalone — every concept,
 > dependency, and external quirk needed to build v1 is described here.
 >
-> **Last updated:** 2026-06-11 (**review batch 2: input hardening** — the
+> **Last updated:** 2026-06-11 (**review batch 3: figure cache key** — C2+C3
+> of the `dev/notes/2026-06-11-prerelease-review.md` handoff list, in one
+> change so warm figure entries are **orphaned exactly once**: §9.6 the
+> figure-description key now uses the crop's deterministic inputs —
+> `(verbatim page-raster hash, bbox_norm, ocr-time crop_padding)`, the §9.7
+> table-key scheme — instead of hashing the re-encoded crop PNG (immune to
+> Pillow churn; run↔describe shared), plus a `"kind": "figure-description"`
+> discriminator; §8.5 the bundle manifest gains additive per-page
+> `raster_sha256` + top-level `figure_crop_padding` (`bundle_schema` stays 1
+> — the bundle stores no rasters for figure-only pages, so the hash rides
+> the manifest; old bundles degrade to the legacy crop-bytes key, and the
+> crop PNGs are now explicitly *derived data*). Pinned by a re-encoded-crop
+> run↔describe share test (verified failing pre-change). Earlier same day —
+> **review batch 2: input hardening** — the
 > D-tier of the `dev/notes/2026-06-11-prerelease-review.md` handoff list:
 > §6 plain `http://` input URLs are upgraded to `https://` before any request
 > and a plaintext-served download (downgrade redirect) warns loudly (D2);
@@ -985,6 +998,14 @@ present, and `run`/`describe` share table cache keys (the key hashes the
 verbatim raster bytes — plus the crop bbox/padding on the cropped path, §9.7). The field is additive: old readers ignore it (`bundle_schema` stays 1),
 and a bundle without it simply skips table refinement with a warning.
 
+Every page additionally carries **`raster_sha256`** (the verbatim raster's
+hash) and the manifest a top-level **`figure_crop_padding`** (the ocr-time
+`[figure].crop_padding`) — the figure-description cache-key material (§9.6:
+keys are `(raster, bbox, padding)`), needed because the bundle stores **no
+rasters for figure-only pages**. Both additive (`bundle_schema` stays 1); a
+bundle without them falls back to keying descriptions on the stored crop
+bytes.
+
 `manifest.json`:
 
 ```jsonc
@@ -1009,10 +1030,12 @@ and a bundle without it simply skips table refinement with a warning.
     "sampling": { "temperature": 0 },
   },
   "figure_detect": "grounding",
+  "figure_crop_padding": 0.02, // ocr-time crop margin; figure cache-key material (§9.6)
   "pages": [
     {
       "page_number": 3,
       "markdown": "## 3. Method\n...\n⟦INSCRIBER_FIG:fig_p3_1⟧\n...",
+      "raster_sha256": "...", // verbatim-raster hash; figure cache-key material (§9.6)
       "regions": [
         {
           "label": "figure",
@@ -1106,8 +1129,8 @@ render_long_edge_px, prompt, sampling_params)`. Each item matters:
   regions) **plus** raw model output (debugging) and a `value_schema` integer so
   a future backend's richer result can't collide with a v1 entry. **No crops are
   stored** — cropping is recomputed each run from `figure.crop_padding` (which is
-  therefore _not_ in the OCR key); the VLM cache's `figure_crop_hash` (§9.6) is
-  what protects correctness when crops change.
+  therefore _not_ in the OCR key); the VLM figure key's `(raster, bbox,
+  padding)` fields (§9.6) are what protect correctness when crops change.
 - **Truncated pages are cached _flagged_, never silently served.** A page whose
   generation stopped at the cap instead of EOS (`finish_reason != "stop"` — the
   repetition-loop signature, §2.2) is still the best available output: it is
@@ -1275,9 +1298,26 @@ Two precision notes for the implementer:
 
 ### 9.6 VLM caching
 
-Same scheme as §8.6, keyed on `(figure_crop_hash, vlm_backend_name,
+Same scheme as §8.6, keyed on `("kind": "figure-description",
+page_raster_hash, crop_bbox, crop_padding, vlm_backend_name,
 vlm_model_identity, vlm_mmproj_identity, server_build_identity,
 full_assembled_prompt, sampling_params, chat_template_kwargs)`.
+
+The image identity is the crop's **deterministic inputs** — the verbatim page
+raster's hash + the figure's `bbox_norm` + the ocr-time `figure.crop_padding`
+— **not** a hash of the re-encoded crop PNG (changed 2026-06-11, adopting the
+§9.7 table-key scheme and orphaning pre-change figure entries once): the
+crop's *pixels* are fully determined by those three, so the key is immune to
+PNG-encoder (Pillow) churn and shared between `run` and `describe` regardless
+of which Pillow wrote the bundle's crop files. `describe` reads the raster
+hash and padding from the bundle manifest (§8.5 — the bundle stores no
+rasters for figure-only pages, so the hash rides the manifest); an **old
+bundle** lacking those fields degrades to the legacy crop-bytes hash
+(recompute at worst, never a crash). One consequence: the bundle's crop PNGs
+are *derived data* — hand-replacing one does not change the key (use
+`--refresh`). The `kind` discriminator keeps figure entries structurally
+disjoint from table/probe entries in the shared store.
+
 The key uses the **fully assembled prompt — context text included** — not just a
 template name; otherwise changing `context_chars` or the page text would serve a
 stale description. `server_build_identity` is the same llama.cpp build probe as

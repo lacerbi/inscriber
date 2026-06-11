@@ -71,10 +71,16 @@ def test_ocr_then_describe_roundtrip(tmp_path, monkeypatch, hermetic_cache, fixt
     assert any("⟦INSCRIBER_FIG:fig_p1_1⟧" in p.markdown for p in bundle.pages)
     assert bundle.pages[0].figures[0].id == "fig_p1_1"
 
+    # New-bundle figure cache-key material rides the manifest (DESIGN §9.6).
+    assert bundle.pages[0].raster_sha256 is not None
+    assert bundle.figure_crop_padding == 0.02
+
     # describe with a mocked VLM pass.
     monkeypatch.setattr(
         pipeline, "_vlm_describe",
-        lambda cfg, pages, crop_base, session: {"fig_p1_1": "A line chart trending upward."},
+        lambda cfg, pages, crop_base, session, **kw: {
+            "fig_p1_1": "A line chart trending upward."
+        },
     )
     dcfg = RunConfig(command="describe", input=str(bundle_dir))
     dcfg.output.dir = str(out)
