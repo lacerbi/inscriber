@@ -108,9 +108,6 @@ Legend: `[ ]` todo · `[!]` blocked.
       its cache-key material. Reminder: a loop that self-terminates under the
       cap emits `finish_reason: "stop"` and is invisible to the detector
       (DESIGN §2.2 known limitation).
-- [ ] **Publish to PyPI** — the name `inscriber` was verified available
-      (DESIGN §18) but nothing is published yet; README documents source
-      install until then.
 - [ ] **Alternate BibTeX sources** — Crossref / arXiv API as fallbacks to
       Semantic Scholar (unauthenticated 429s are common in practice; the
       degrade path is DESIGN §12), or fully-offline extraction from the paper's

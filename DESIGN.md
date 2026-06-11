@@ -12,7 +12,11 @@
 > `paper2llm`). It is written to be read entirely standalone — every concept,
 > dependency, and external quirk needed to build v1 is described here.
 >
-> **Last updated:** 2026-06-11 (**review batch 5: external (GPT) review
+> **Last updated:** 2026-06-11 (**v0.1.0 published to PyPI** — §18: install
+> is now `pip install inscriber`; releases are tag-driven via
+> `.github/workflows/release.yml` using PyPI Trusted Publishing, with a
+> tag-vs-pyproject version gate and a dev-dirs-excluded sdist. Earlier same
+> day — **review batch 5: external (GPT) review
 > fixes** — §8.5/§13.2/§14 **`ocr` now honors `output.clobber`** and takes
 > `--no-clobber` (an existing bundle's manifest fails fast before any model
 > work — a careless re-run could silently destroy hand-edited bundle
@@ -2345,9 +2349,13 @@ mocked servers.
 
 - **`pyproject.toml`** (PEP 621), build backend `hatchling` or `setuptools`.
 - Console entry point: `inscriber = "inscriber.cli:main"`.
-- **PyPI name: `inscriber`** (verified available on PyPI as of 2026-06; the
-  `inscriber` GitHub _user_ exists but the repo will live in the maintainer's
-  namespace, no conflict).
+- **PyPI name: `inscriber`** — **published since v0.1.0 (2026-06-11)**.
+  Releases are tag-driven: pushing a `v*` tag runs
+  `.github/workflows/release.yml`, which builds sdist+wheel, gates the tag
+  against the `pyproject.toml` version, and publishes via **PyPI Trusted
+  Publishing** (OIDC against the `pypi` environment — no API token exists
+  anywhere). The sdist excludes the developer-only dirs (`dev/`, `.github/`,
+  `.claude/`, `.agents/`); tests and docs ship in it.
 - Python `>=3.10`.
 - License: **MIT** (matches `paper2llm`).
 - Optional extras: `[bibtex]` could gate the Semantic Scholar dependency if it's
