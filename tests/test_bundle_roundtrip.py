@@ -147,7 +147,7 @@ def test_ocr_explicit_name_names_the_bundle(
     out = tmp_path / "out"
     monkeypatch.setattr(pipeline, "run_ocr_pass", lambda cfg, resolved, work: (pages, results))
     cfg = _ocr_cfg(tmp_path, out)
-    cfg.output.name = "custom name"
+    cfg.name = "custom name"
     bundle_dir = Path(pipeline.run_ocr(cfg)[0])
     assert bundle_dir.name == "custom_name.inscriber-ocr"
     assert read_bundle(bundle_dir).source_name == "custom_name"

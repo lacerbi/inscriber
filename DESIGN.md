@@ -13,7 +13,8 @@
 > dependency, and external quirk needed to build v1 is described here.
 >
 > **Last updated:** 2026-06-11 (§13/§14: **output naming** — the base name now
-> resolves as explicit `output.name`/`--name` > the **BibTeX citation key**
+> resolves as explicit `--name` (per-run, hence CLI-only — no config key,
+> like `--pages`) > the **BibTeX citation key**
 > (`output.name_from_bibtex`, default true; e.g. `chang2025amortized`; the
 > `on`-mode mock never names files; passive — never triggers lookups) > the
 > source-derived name; suffixes switched **dot → underscore** with an explicit
@@ -22,8 +23,11 @@
 > stance as the `enabled` removal below); the `.bib` write moved after name
 > resolution (`_finalize_outputs`); `ocr` gained `--name` (bundle name — a
 > bundle can never get a citation-key name, §8.5/§14); `join` follows the new
-> scheme. Previously 2026-06-10 — §2.2/§22.2: **DeepSeek-OCR-2 spike ran —
-> adoption deferred.** Format + per-axis frame confirmed under tiling (the
+> scheme. Follow-up same day: **`output.full_suffix`** (default true;
+> `--no-full-suffix`, also on `join`) — false writes the full document as
+> `{base}.md` instead of `{base}_full.md` (library-style one-file naming;
+> splits keep their suffixes). Previously 2026-06-10 — §2.2/§22.2:
+> **DeepSeek-OCR-2 spike ran — adoption deferred.** Format + per-axis frame confirmed under tiling (the
 > M1a calibration discipline; frame render-size-invariant, `grid_to_norm`
 > carries over) and the v1 known-loop page completes cleanly with per-row
 > equation tags — but **dense tables silently lose ≥47% of numeric values**
@@ -1735,13 +1739,14 @@ refine = true                          # VLM-restructure DeepSeek <table> blobs 
 
 [output]
 dir = "."                              # output directory
-name = ""                              # explicit output base name ("" = auto;
-                                       #   sanitized; with `ocr` it also names
-                                       #   the bundle directory)
+                                       # (an explicit base name is per-run →
+                                       #   CLI-only: --name, no config key, §14)
 name_from_bibtex = true                # no explicit name + an entry produced →
                                        #   the BibTeX citation key names the
                                        #   outputs (chang2025amortized, §14);
                                        #   else the source-derived name
+full_suffix = true                     # false: full document = {base}.md, not
+                                       #   {base}_full.md (splits keep suffixes)
 split = true                           # also write main/appendix/backmatter
 page_numbers = false                   # insert "#### Page N" before each page
 page_separators = false                # insert "---" between pages
@@ -1824,6 +1829,8 @@ inscriber join    BASE                # rejoin {base}_main/_appendix/_backmatter
       --name NAME               explicit output base name (§14; `ocr` also
                                 accepts it — there it names the bundle)
       --no-bibtex-name          never use the BibTeX citation key as base name
+      --no-full-suffix          full document = {base}.md, not {base}_full.md
+                                (also accepted by join)
       --no-split                write only the full document
       --page-numbers            insert "#### Page N" before each page
       --page-separators         insert "---" between pages
@@ -1869,7 +1876,9 @@ inscriber join    BASE                # rejoin {base}_main/_appendix/_backmatter
 | `figure.mode`                                          | `--figure-mode`                                                                   |
 | `figure.crop_padding` / `figure.context_chars`         | `--crop-padding` / `--context-chars`                                              |
 | `table.refine`                                         | `--no-table-refine` (sets false)                                                  |
-| `output.name` / `output.name_from_bibtex`              | `--name` (run, ocr, describe) / `--no-bibtex-name` (sets false)                   |
+| `output.name_from_bibtex`                              | `--no-bibtex-name` (sets false)                                                   |
+| (output base name — per-run, CLI-only, §14)            | `--name` (run, ocr, describe)                                                     |
+| `output.full_suffix`                                   | `--no-full-suffix` (sets false; run, describe, join)                              |
 | `output.dir`                                           | `-o/--output-dir`                                                                 |
 | `output.split`                                         | `--no-split` (sets false)                                                         |
 | `output.page_numbers` / `output.page_separators`       | `--page-numbers` / `--page-separators`                                            |
@@ -1908,7 +1917,10 @@ OUT/
 
 - **Base-name resolution** (`_resolve_output_base`; one INFO line always says
   which name won and why):
-  1. **`output.name` / `--name`** — explicit override, sanitized.
+  1. **`--name`** — explicit override, sanitized. Per-run like `--pages`
+     (`RunConfig.name`), so deliberately **CLI-only, no config key** — a
+     persistent name in config.toml would name every run's outputs
+     identically.
   2. **The BibTeX citation key** (`output.name_from_bibtex`, default **true**)
      — when the run produced an entry (§12), its key
      (`{firstAuthorLastName}{year}{firstSubstantiveTitleWord}`, §12.2) names
@@ -1929,6 +1941,13 @@ OUT/
 - `{base}_full.md` is the **full** document (the enhanced, stitched markdown).
   After hand-editing the splits, `inscriber join OUT/{base}` regenerates it
   from them (in the §11 allparts form).
+- **`output.full_suffix = false`** (`--no-full-suffix`; also accepted by
+  `join`) writes the full document as **`{base}.md`** instead — library-style
+  one-file naming, natural with `--no-split` or a one-file-per-paper corpus.
+  Split files keep their `_part` suffixes either way (bare `{base}.md` cannot
+  collide with `{base}_main.md`). Deliberately an explicit knob, not an
+  automatic when-not-splitting behavior — the output filename must not depend
+  on an unrelated option.
 - **Two distinct `figures/` dirs:** the **bundle** always has one (crops are made
   at `ocr` time, before `mode` is chosen — §8.5); the **output** dir gets one only
   when `figure.mode = describe-and-keep` (the only mode that references crops),

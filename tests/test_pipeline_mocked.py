@@ -304,12 +304,26 @@ def test_explicit_name_overrides_everything(tmp_path, monkeypatch, hermetic_cach
     out = tmp_path / "out"
     cfg = _base_cfg(tmp_path, _dummy_models(tmp_path), out)
     cfg.net.offline = True
-    cfg.output.name = "My Paper (v2)"
+    cfg.name = "My Paper (v2)"
     written = pipeline.run(cfg)
     assert len(probe_calls) == 1
     assert (out / "My_Paper_v2_full.md").is_file()
     assert (out / "My_Paper_v2_main.md").is_file()
     assert str(out / "My_Paper_v2.bib") in written  # entry produced, name pinned
+
+
+def test_no_full_suffix_writes_bare_base_md(tmp_path, monkeypatch, hermetic_cache):
+    # full_suffix=False: the full document is {base}.md (library-style); the
+    # split files keep their _part suffixes.
+    _mock_inference(monkeypatch)
+    out = tmp_path / "out"
+    cfg = _base_cfg(tmp_path, _dummy_models(tmp_path), out)
+    cfg.output.full_suffix = False
+    written = pipeline.run(cfg)
+    assert (out / "sample_paper.md").is_file()
+    assert not (out / "sample_paper_full.md").exists()
+    assert (out / "sample_paper_main.md").is_file()
+    assert str(out / "sample_paper.md") in written
 
 
 def test_mock_bibtex_entry_never_names_outputs(tmp_path, monkeypatch, hermetic_cache):

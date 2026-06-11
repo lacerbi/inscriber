@@ -206,11 +206,12 @@ class TableConfig:
 @dataclass
 class OutputConfig:
     dir: str = "."
-    # Output base-name resolution (DESIGN §14): explicit ``name`` > the BibTeX
-    # citation key (when ``name_from_bibtex`` and an entry was produced) > the
-    # source-derived name (PDF stem / domain-handler filename / bundle name).
-    name: str = ""  # "" = no explicit override
+    # Output base-name resolution (DESIGN §14): explicit ``--name``
+    # (``RunConfig.name`` — per-run, CLI-only) > the BibTeX citation key (when
+    # ``name_from_bibtex`` and an entry was produced) > the source-derived
+    # name (PDF stem / domain-handler filename / bundle name).
     name_from_bibtex: bool = True  # use the citation key (e.g. chang2025amortized)
+    full_suffix: bool = True  # False: write {base}.md instead of {base}_full.md
     split: bool = True
     page_numbers: bool = False
     page_separators: bool = False
@@ -254,10 +255,14 @@ class RunConfig:
     Built by ``config.resolve_config`` from defaults < config file < CLI flags.
     """
 
-    command: str  # "run" | "ocr" | "describe"
-    input: str  # PDF path / URL (run, ocr) or bundle dir (describe)
+    command: str  # "run" | "ocr" | "describe" | "join"
+    input: str  # PDF path / URL (run, ocr), bundle dir (describe), or BASE (join)
     config_path: str | None = None
     pages: str | None = None  # "1-10", "3", "5-", "-12", "all" (run, ocr)
+    # Explicit output base name (--name). Per-run like pages, so CLI-only —
+    # deliberately NOT a config-file key (a persistent name would name every
+    # run's outputs identically). None/"" = resolve per DESIGN §14.
+    name: str | None = None
     verbose: int = 0
     quiet: bool = False
 

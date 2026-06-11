@@ -130,7 +130,9 @@ for any citable paper), its citation key — `authorYEARfirstword`, e.g.
 `chang2025amortized` — becomes the base name, giving you library-style
 filenames for free. Otherwise the name derives from the source (PDF stem or
 repository filename). `--name NAME` pins an explicit base name;
-`--no-bibtex-name` disables key-derived naming. Every run logs which name was
+`--no-bibtex-name` disables key-derived naming; `--no-full-suffix` writes the
+full document as `chang2025amortized.md` instead of `…_full.md` (handy with
+`--no-split` or a one-file-per-paper library). Every run logs which name was
 chosen.
 
 ### Two-step: compare VLMs on identical OCR
@@ -188,6 +190,7 @@ has a matching flag. Highlights:
 | `--no-figures`                                                | skip figure detection and description entirely                |
 | `--no-table-refine`                                           | keep raw OCR tables (skip VLM restructuring)                  |
 | `--name NAME` / `--no-bibtex-name`                            | explicit output base name / never name by BibTeX citation key |
+| `--no-full-suffix`                                            | full document as `{base}.md` instead of `{base}_full.md`      |
 | `--no-split` / `--page-numbers` / `--page-separators`         | output options                                                |
 | `--pages RANGE`                                               | page selection, e.g. `"1-10"`, `"3"`, `"5-"`                  |
 | `--bibtex-mode {off,on,auto}` / `--bibtex-in-doc`             | BibTeX mode (default `auto`; `--bibtex` ⇒ `on`)               |

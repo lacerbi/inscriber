@@ -33,6 +33,7 @@ def cfg_from(argv, *, validate=True):
         file_dict={},
         cli_sections=cli_sections,
         pages=getattr(args, "pages", None),
+        name=getattr(args, "name", None),
         verbose=args.verbose,
         quiet=args.quiet,
     )
@@ -65,8 +66,9 @@ def test_defaults_match_design():
     assert rc.figure.crop_padding == pytest.approx(0.02)
     assert rc.figure.context_chars == 2000
     assert rc.table.refine is True
-    assert rc.output.name == ""  # no explicit base-name override
+    assert rc.name is None  # no explicit base-name override (--name is CLI-only)
     assert rc.output.name_from_bibtex is True  # citation key names outputs (§14)
+    assert rc.output.full_suffix is True  # full document = {base}_full.md
     assert rc.output.split is True
     assert rc.output.page_numbers is False
     assert rc.output.page_separators is False
@@ -159,6 +161,7 @@ def test_every_field_overridable():
         "--no-table-refine",
         "--name", "mybase",
         "--no-bibtex-name",
+        "--no-full-suffix",
         "--no-split",
         "--page-numbers",
         "--page-separators",
@@ -200,8 +203,9 @@ def test_every_field_overridable():
     assert rc.figure.mode == "describe-and-keep"
     assert rc.figure.context_chars == 1500
     assert rc.table.refine is False
-    assert rc.output.name == "mybase"
+    assert rc.name == "mybase"
     assert rc.output.name_from_bibtex is False
+    assert rc.output.full_suffix is False
     assert rc.output.split is False
     assert rc.output.page_numbers is True
     assert rc.output.page_separators is True
@@ -271,12 +275,12 @@ def test_invalid_bibtex_mode_rejected():
 
 def test_invalid_output_name_fields_rejected():
     rc = RunConfig(command="run", input="p.pdf")
-    rc.output.name = 3  # malformed TOML value
-    with pytest.raises(ConfigError, match="output.name"):
-        validate_structural(rc)
-    rc = RunConfig(command="run", input="p.pdf")
     rc.output.name_from_bibtex = "yes"
     with pytest.raises(ConfigError, match="output.name_from_bibtex"):
+        validate_structural(rc)
+    rc = RunConfig(command="run", input="p.pdf")
+    rc.output.full_suffix = "yes"
+    with pytest.raises(ConfigError, match="output.full_suffix"):
         validate_structural(rc)
 
 

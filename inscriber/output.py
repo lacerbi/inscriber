@@ -74,11 +74,14 @@ def copy_figures(
 
 
 def write_full_document(
-    out_dir: Path, base_name: str, markdown: str, *, clobber: bool
+    out_dir: Path, base_name: str, markdown: str, *, clobber: bool, full_suffix: bool = True
 ) -> Path:
-    """Write ``{base}_full.md`` — the full stitched document (DESIGN §14)."""
+    """Write the full stitched document (DESIGN §14): ``{base}_full.md``, or
+    ``{base}.md`` when ``full_suffix`` is off (library-style one-file naming).
+    """
     out_dir = Path(out_dir)
-    return write_text_file(out_dir / f"{base_name}_full.md", markdown, clobber=clobber)
+    name = f"{base_name}_full.md" if full_suffix else f"{base_name}.md"
+    return write_text_file(out_dir / name, markdown, clobber=clobber)
 
 
 def write_split_documents(

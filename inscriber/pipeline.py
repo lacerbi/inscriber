@@ -861,8 +861,8 @@ def _resolve_output_base(cfg: RunConfig, fallback_base: str, bibtex: str | None)
     BibTeX citation key (``name_from_bibtex``) > the source-derived fallback.
     Always logs which name won, so the naming decision is visible.
     """
-    if cfg.output.name:
-        base = sanitize_base_name(cfg.output.name)
+    if cfg.name:
+        base = sanitize_base_name(cfg.name)
         logger.info("output base name: %s (explicit --name)", base)
         return base
     if cfg.output.name_from_bibtex:
@@ -923,7 +923,10 @@ def _write_documents(
     full_out = (bibtex_block + full_md) if bibtex_block else full_md
     if cfg.output.notice:
         full_out = append_transcription_notice(full_out, vlm_tables=vlm_tables)
-    written: list[Path] = [write_full_document(out_dir, base, full_out, clobber=cfg.output.clobber)]
+    written: list[Path] = [write_full_document(
+        out_dir, base, full_out,
+        clobber=cfg.output.clobber, full_suffix=cfg.output.full_suffix,
+    )]
     if cfg.output.split:
         sections = split_markdown_content(full_md)  # split the clean doc, not the prepended one
         main, backmatter, appendix = prepare_formatted_sections(sections)
@@ -966,7 +969,7 @@ def run_ocr(cfg: RunConfig) -> list[str]:
     resolved = resolve_input(cfg.input, offline=cfg.net.offline)
     # Explicit --name only: no BibTeX exists at ocr time, so the bundle never
     # gets a citation-key name (DESIGN §14) — describe's outputs still can.
-    base = sanitize_base_name(cfg.output.name or resolved.suggested_name)
+    base = sanitize_base_name(cfg.name or resolved.suggested_name)
     out_dir = Path(cfg.output.dir)
     bdir = bundle_dir_for(out_dir, base)
     figures_dir = bdir / "figures"
@@ -1155,7 +1158,8 @@ def join_splits(cfg: RunConfig) -> list[str]:
     main_path = resolve_join_input(Path(cfg.input).expanduser())
     content = join_split_files(main_path)
     base = main_path.name[: -len("_main.md")]
+    name = f"{base}_full.md" if cfg.output.full_suffix else f"{base}.md"
     out_path = write_text_file(
-        main_path.with_name(f"{base}_full.md"), content, clobber=cfg.output.clobber
+        main_path.with_name(name), content, clobber=cfg.output.clobber
     )
     return [str(out_path)]

@@ -196,3 +196,13 @@ def test_cli_join_no_clobber(tmp_path):
 def test_cli_join_missing_input(tmp_path):
     rc = cli_main(["join", str(tmp_path / "nope"), "-c", _empty_config(tmp_path)])
     assert rc == 1
+
+
+def test_cli_join_no_full_suffix(tmp_path):
+    _write_splits(tmp_path)
+    rc = cli_main([
+        "join", str(tmp_path / "paper"), "--no-full-suffix", "-c", _empty_config(tmp_path)
+    ])
+    assert rc == 0
+    assert (tmp_path / "paper.md").is_file()
+    assert not (tmp_path / "paper_full.md").exists()

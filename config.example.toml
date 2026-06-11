@@ -99,14 +99,17 @@ dir = "."
 
 # Output base name: files are written as {base}_full.md, {base}_main.md,
 # {base}_appendix.md, {base}_backmatter.md, and {base}.bib.
-# name = explicit base name ("" = automatic; sanitized for filenames; with the
-#        `ocr` subcommand it also names the bundle directory).
-# name_from_bibtex = when no explicit name is set and a BibTeX entry was
+# An explicit base name is a per-run value, so it is CLI-only: --name NAME
+# (with the `ocr` subcommand it also names the bundle directory).
+# name_from_bibtex = when no explicit --name is given and a BibTeX entry was
 #        produced, use its citation key (e.g. chang2025amortized) as the base
 #        name; otherwise fall back to the source-derived name (PDF stem or
 #        repository filename). The chosen name is logged on every run.
-name = ""
 name_from_bibtex = true
+
+# false writes the full document as {base}.md instead of {base}_full.md
+# (library-style one-file naming; the split files keep their suffixes).
+full_suffix = true
 
 split = true
 page_numbers = false

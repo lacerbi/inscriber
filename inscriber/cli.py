@@ -116,6 +116,9 @@ def _add_output_stage(p: argparse.ArgumentParser) -> None:
     p.add_argument("--no-bibtex-name", dest="name_from_bibtex", action="store_const",
                    const=False, default=None,
                    help="never derive the base name from the BibTeX citation key")
+    p.add_argument("--no-full-suffix", dest="full_suffix", action="store_const",
+                   const=False, default=None,
+                   help="write the full document as {base}.md instead of {base}_full.md")
     p.add_argument("--no-split", dest="split", action="store_const", const=False,
                    default=None, help="write only the full document")
     p.add_argument("--page-numbers", dest="page_numbers", action="store_const",
@@ -218,7 +221,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_join.add_argument("-c", "--config", dest="config", default=None, metavar="PATH",
                         help="config file (default: ./config.toml, then platform config dir)")
     p_join.add_argument("--no-clobber", dest="clobber", action="store_const", const=False,
-                        default=None, help="error instead of overwriting {base}_full.md")
+                        default=None, help="error instead of overwriting the full document")
+    p_join.add_argument("--no-full-suffix", dest="full_suffix", action="store_const",
+                        const=False, default=None,
+                        help="write the full document as {base}.md instead of {base}_full.md")
     p_join.add_argument("-v", "--verbose", action="count", default=0,
                         help="verbose logging (DEBUG)")
     p_join.add_argument("-q", "--quiet", action="store_true", default=False,
@@ -278,8 +284,10 @@ def collect_cli_sections(args: argparse.Namespace) -> dict[str, dict]:
     setv("vlm", "endpoint", g("vlm_endpoint"))
     # output
     setv("output", "dir", g("output_dir"))
-    setv("output", "name", g("name"))
+    # (--name is per-run like --pages: passed to resolve_config directly,
+    # not through a config section — there is no [output] name key.)
     setv("output", "name_from_bibtex", g("name_from_bibtex"))
+    setv("output", "full_suffix", g("full_suffix"))
     setv("output", "split", g("split"))
     setv("output", "page_numbers", g("page_numbers"))
     setv("output", "page_separators", g("page_separators"))
@@ -315,6 +323,7 @@ def build_run_config(argv: list[str]):
         file_dict=file_dict,
         cli_sections=cli_sections,
         pages=getattr(args, "pages", None),
+        name=getattr(args, "name", None),
         verbose=args.verbose,
         quiet=args.quiet,
     )
@@ -355,6 +364,7 @@ def main(argv: list[str] | None = None) -> int:
             file_dict=file_dict,
             cli_sections=cli_sections,
             pages=getattr(args, "pages", None),
+            name=getattr(args, "name", None),
             verbose=args.verbose,
             quiet=args.quiet,
         )

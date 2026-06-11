@@ -135,19 +135,26 @@ def resolve_config(
     file_dict: dict,
     cli_sections: dict[str, dict],
     pages: str | None = None,
+    name: str | None = None,
     verbose: int = 0,
     quiet: bool = False,
 ) -> RunConfig:
-    """Merge defaults < file < CLI into a fully-resolved :class:`RunConfig`."""
+    """Merge defaults < file < CLI into a fully-resolved :class:`RunConfig`.
+
+    ``pages`` and ``name`` are per-run values (CLI-only, like the input itself)
+    — they have no config-file key, so they arrive as direct arguments rather
+    than through ``cli_sections``.
+    """
     sections = {
-        name: _build_section(cls, file_dict.get(name), cli_sections.get(name))
-        for name, cls in _SECTIONS.items()
+        sec: _build_section(cls, file_dict.get(sec), cli_sections.get(sec))
+        for sec, cls in _SECTIONS.items()
     }
     return RunConfig(
         command=command,
         input=input_arg,
         config_path=config_path,
         pages=pages,
+        name=name,
         verbose=verbose,
         quiet=quiet,
         **sections,  # type: ignore[arg-type]
@@ -256,11 +263,13 @@ def validate_structural(cfg: RunConfig) -> None:
         )
     if not isinstance(cfg.table.refine, bool):
         errors.append(f"table.refine must be a boolean (got {cfg.table.refine!r})")
-    if not isinstance(cfg.output.name, str):
-        errors.append(f"output.name must be a string (got {cfg.output.name!r})")
     if not isinstance(cfg.output.name_from_bibtex, bool):
         errors.append(
             f"output.name_from_bibtex must be a boolean (got {cfg.output.name_from_bibtex!r})"
+        )
+    if not isinstance(cfg.output.full_suffix, bool):
+        errors.append(
+            f"output.full_suffix must be a boolean (got {cfg.output.full_suffix!r})"
         )
 
     if errors:
