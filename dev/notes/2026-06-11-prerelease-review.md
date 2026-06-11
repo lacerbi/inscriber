@@ -407,6 +407,8 @@ Before touching anything here, read `AGENTS.md` ("Where truth lives",
   intent).
 * `find_handler` rebuilds + recompiles all 7 handler regex configs per call
   (also called again for BibTeX provenance). Negligible at one-PDF scale.
+* **Status:** ⏸ watch (by definition) — none has bitten as of 2026-06-11; the
+  trigger conditions above are the revisit criteria (also listed in TODO.md).
 
 ---
 
