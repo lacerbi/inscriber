@@ -8,23 +8,17 @@ Legend: `[ ]` todo · `[!]` blocked.
 
 ## Pre-release review follow-ups (2026-06-11)
 
-- [ ] **Work through the remaining pre-release review findings** — the
-      2026-06-11 full-codebase review's non-blocking items, written up as a
-      self-contained handoff list (each with location, rationale, suggested
-      fix, and pinned-behavior/cache-key caveats, **per-item statuses
-      inline**): `dev/notes/2026-06-11-prerelease-review.md`. Batches 1–3
-      were fixed 2026-06-11 — the mechanical tier (both HIGHs, robustness/UX,
-      atomic hash sidecar, reserved-name/alt-text output fixes, token-cap
-      constant), input hardening (defusedxml for arXiv Atom, `http://`
-      upgrade + plaintext-fetch warning, suffix host matching), and the
-      figure-cache key move to `(raster, bbox, padding)` + `kind` (C2+C3,
-      warm figure entries orphaned once; additive manifest fields) — and the
-      `dehyphenate` finding was declined (DESIGN §10.3b now states the
-      actual behavior). **Still open:** GFM-table sanitation acceptance
-      (B2), `tests/conftest.py` dedup (E1), plus the decision-only/watch
-      items (B5 parity-bound splitter miss, E3). The blocking items (SIGTERM
-      orphan backstop, capped streaming download, concurrent-port gate,
-      README sizes) were fixed pre-release.
+- [ ] **Pre-release review: parked leftovers** — the 2026-06-11 full-codebase
+      review's findings were worked through the same day (batches 1–4 fixed,
+      `dehyphenate` declined; per-item statuses inline in
+      `dev/notes/2026-06-11-prerelease-review.md`). What remains is parked by
+      decision — revisit only on real-run evidence: **B2**
+      `sanitize_table_output` rejects legal GFM tables without leading pipes
+      (failure mode is "kept the safe fallback"; the fix sits next to the
+      pinned prompt), **B5** splitter single-search appendix miss (faithful
+      paper2llm parity), **E3** watch items (the pixel-exact rasterize
+      assertion on PyMuPDF wheel bumps, `ChatClient`'s scalar 600 s timeout,
+      the per-call handler-regex rebuild).
 
 ## Table-restructuring pass (DESIGN §9.7)
 

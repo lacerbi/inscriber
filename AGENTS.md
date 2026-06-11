@@ -135,9 +135,12 @@ session) → stitch/clean → split (main/appendix/backmatter) → BibTeX (defau
   `"reconstructing ONE table"` for tables, `"bibliographic metadata"` for the
   BibTeX probe, else figure). Probe fakes default to `{"citable": false}` so
   default-`auto` runs stay inert and network-free in tests.
-- Use the `hermetic_cache` fixture pattern (monkeypatch `cache.default_cache_dir`
-  / `default_vlm_cache_dir` into tmp) — never let tests touch the real
-  platformdirs cache.
+- Use the shared `hermetic_cache` fixture (defined once in `tests/conftest.py`:
+  monkeypatches `cache.default_cache_dir` / `default_vlm_cache_dir` into tmp and
+  pins the llama.cpp build-identity probe) — never let tests touch the real
+  platformdirs cache. The near-duplicated per-file helpers (`_dummy_models`,
+  `_mock_inference`, cfg builders) deliberately stay file-local — see the
+  conftest docstring for why.
 - `tests/fixtures/deepseek_paper_p1_raw.txt` is the golden real-output format the
   DeepSeek parser is pinned to; extend it rather than inventing new shapes.
 - Changes to llama.cpp-facing behavior (prompts, template kwargs, server flags)

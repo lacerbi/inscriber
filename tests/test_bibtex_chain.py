@@ -14,7 +14,6 @@ from pathlib import Path
 import httpx
 import pytest
 
-from inscriber import cache as cache_mod
 from inscriber import pipeline
 from inscriber.bibtex.arxiv import arxiv_bibtex, arxiv_id_from_url
 from inscriber.bibtex.chain import citable_provenance, generate_bibtex_auto
@@ -358,11 +357,7 @@ def test_chain_non_arxiv_provenance_uses_title_search(fake_http):
 # --------------------------------------------------------------------------- #
 
 
-@pytest.fixture
-def hermetic_cache(tmp_path, monkeypatch):
-    monkeypatch.setattr(cache_mod, "default_cache_dir", lambda: tmp_path / "ocrcache")
-    monkeypatch.setattr(cache_mod, "default_vlm_cache_dir", lambda: tmp_path / "vlmcache")
-    monkeypatch.setattr(pipeline, "llama_build_identity", lambda *a, **k: "version: 9587 (test)")
+# hermetic_cache comes from tests/conftest.py (shared; review E1).
 
 
 def _dummy_models(tmp_path) -> dict:

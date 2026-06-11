@@ -12,7 +12,6 @@ from pathlib import Path
 
 import pytest
 
-from inscriber import cache as cache_mod
 from inscriber import pipeline
 from inscriber.bundle import BundleError, read_bundle
 from inscriber.models import ResolutionMode, RunConfig
@@ -22,13 +21,7 @@ from inscriber.pdf.rasterize import rasterize
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
-@pytest.fixture
-def hermetic_cache(tmp_path, monkeypatch):
-    """Keep cache + hash side effects inside tmp (never touch platformdirs)."""
-    monkeypatch.setattr(cache_mod, "default_cache_dir", lambda: tmp_path / "ocrcache")
-    monkeypatch.setattr(cache_mod, "default_vlm_cache_dir", lambda: tmp_path / "vlmcache")
-    # Cache keys probe the llama.cpp build identity; no real binary in tests.
-    monkeypatch.setattr(pipeline, "llama_build_identity", lambda *a, **k: "version: 9587 (test)")
+# hermetic_cache comes from tests/conftest.py (shared; review E1).
 
 
 @pytest.fixture

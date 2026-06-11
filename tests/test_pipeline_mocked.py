@@ -12,7 +12,6 @@ from pathlib import Path
 
 import pytest
 
-from inscriber import cache as cache_mod
 from inscriber import pipeline
 from inscriber.llama.client import ChatClient
 from inscriber.llama.server import LlamaServerManager
@@ -20,13 +19,7 @@ from inscriber.models import RunConfig
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
-
-@pytest.fixture
-def hermetic_cache(tmp_path, monkeypatch):
-    monkeypatch.setattr(cache_mod, "default_cache_dir", lambda: tmp_path / "ocrcache")
-    monkeypatch.setattr(cache_mod, "default_vlm_cache_dir", lambda: tmp_path / "vlmcache")
-    # Cache keys probe the llama.cpp build identity; no real binary in tests.
-    monkeypatch.setattr(pipeline, "llama_build_identity", lambda *a, **k: "version: 9587 (test)")
+# hermetic_cache comes from tests/conftest.py (shared; review E1).
 
 
 def _dummy_models(tmp_path) -> dict:

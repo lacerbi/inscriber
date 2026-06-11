@@ -17,7 +17,6 @@ from pathlib import Path
 
 import pytest
 
-from inscriber import cache as cache_mod
 from inscriber import pipeline
 from inscriber.llama.client import ChatClient
 from inscriber.llama.server import LlamaServerManager
@@ -119,11 +118,7 @@ def test_old_entries_read_as_not_truncated():
 # --------------------------------------------------------------------------- #
 
 
-@pytest.fixture
-def hermetic_cache(tmp_path, monkeypatch):
-    monkeypatch.setattr(cache_mod, "default_cache_dir", lambda: tmp_path / "ocrcache")
-    monkeypatch.setattr(cache_mod, "default_vlm_cache_dir", lambda: tmp_path / "vlmcache")
-    monkeypatch.setattr(pipeline, "llama_build_identity", lambda *a, **k: "version: 9587 (test)")
+# hermetic_cache comes from tests/conftest.py (shared; review E1).
 
 
 def _mock_ocr(monkeypatch, *, finish_reason: str):

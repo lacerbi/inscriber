@@ -1,13 +1,16 @@
 # 2026-06-11 — Pre-release codebase review: remaining findings (handoff)
 
-**Status: mostly resolved (2026-06-11, batches 1–3).** Batch 1 (the mechanical
-tier — A1–A6, C1, B3, B4, E2, + the C4 comment), batch 2 (input hardening —
-D1 via a new `defusedxml` dependency, D2, D3), and batch 3 (the C2+C3
-figure-cache-key change, done together so warm figure entries were orphaned
-exactly once) were fixed the same day, and **B1 was declined** (maintainer
-decision; DESIGN §10.3b amended to state the actual behavior instead).
-Per-item status lines below. **Still open: B2, B5 (parity-bound, decision
-only), E1, E3 (watch).**
+**Status: resolved (2026-06-11, batches 1–4) except two parked items.**
+Batch 1 (the mechanical tier — A1–A6, C1, B3, B4, E2, + the C4 comment),
+batch 2 (input hardening — D1 via a new `defusedxml` dependency, D2, D3),
+batch 3 (the C2+C3 figure-cache-key change, done together so warm figure
+entries were orphaned exactly once), and batch 4 (E1, the shared
+`tests/conftest.py` fixture) were fixed the same day; **B1 was declined**
+(maintainer decision; DESIGN §10.3b amended to state the actual behavior
+instead). Per-item status lines below. **Still parked: B2 (deferred —
+worst care-to-payoff: the failure mode is "kept the safe fallback", and the
+fix sits next to the pinned prompt), B5 (parity-bound, acts only on a
+deliberate parity break), E3 (watch items — no action unless they bite).**
 
 This note is the self-contained record of the
 findings from the 2026-06-11 full-codebase pre-release review that were **not**
@@ -179,6 +182,9 @@ Before touching anything here, read `AGENTS.md` ("Where truth lives",
   unescaped `|` + a valid separator line), keeping the strict "nothing but a
   table" stance. **Caveat:** the digit-coverage guard and never-cache-failure
   flow must be re-checked; the prompt itself is pinned — do not touch it.
+* **Status:** ⏸ deferred 2026-06-11 — worst care-to-payoff of the list (the
+  failure mode is "kept the safe fallback") and the fix sits next to pinned
+  behavior. Revisit only if real runs show good restructures being discarded.
 
 ### B3. [LOW] `--no-full-suffix` can collide with another paper's split; Windows reserved names
 
@@ -219,6 +225,8 @@ Before touching anything here, read `AGENTS.md` ("Where truth lives",
   it is not a bug, but if it ever bites, the fix is `finditer` + first match
   positioned after the ack boundary. Update DESIGN §11 if changed (deliberate
   parity break).
+* **Status:** ⏸ parked 2026-06-11 — stays as documented parity, per repo
+  policy; act only on real-document evidence.
 
 ---
 
@@ -365,6 +373,13 @@ Before touching anything here, read `AGENTS.md` ("Where truth lives",
   touches the real platformdirs cache.
 * **Fix:** move to a shared `tests/conftest.py`; keep AGENTS.md's "Testing
   conventions" section accurate.
+* **Status:** ✅ fixed 2026-06-11 — `hermetic_cache` defined once in
+  `tests/conftest.py` (pytest auto-resolves it; zero call-site churn), the six
+  copies deleted, AGENTS.md updated. The near-duplicated helpers deliberately
+  stay file-local: the `_mock_inference` variants differ by design (each file
+  discriminates/records different call kinds), and `_dummy_models` drift is
+  harmless — only the hermeticity boundary is load-bearing enough to
+  centralize (rationale recorded in the conftest docstring).
 
 ### E2. [LOW] Duplicated `8192` OCR token-cap literal
 
