@@ -12,7 +12,20 @@
 > `paper2llm`). It is written to be read entirely standalone — every concept,
 > dependency, and external quirk needed to build v1 is described here.
 >
-> **Last updated:** 2026-06-11 (§13/§14: **output naming** — the base name now
+> **Last updated:** 2026-06-11 (§3.1/§13.2/§13.4: **`inscriber setup`
+> subcommand** — model download + config bootstrap (`inscriber/setup.py`,
+> outside the pipeline: no RunConfig, no servers, no caches): fetches the
+> recommended GGUF pairs against a **pinned sha256/size registry** (the
+> Hugging Face LFS identities, captured 2026-06-11; resumable `.part`
+> downloads with atomic promote, verify-and-skip on re-run, never-overwrite
+> on a conflicting existing file, disk-space preflight; `--deepseek-quant
+> q8_0` selects the smaller verified pair; the unsloth Gemma projector is
+> saved under a Gemma-specific local name) into the platform data dir, then
+> writes a minimal platform `config.toml` — or parse-merge-emits the managed
+> keys into an existing one (all keys preserved, comments not; logged).
+> llama.cpp itself stays a manual step (§13.4). Pinned by
+> `tests/test_setup.py`. Earlier same day —
+> §13/§14: **output naming** — the base name now
 > resolves as explicit `--name` (per-run, hence CLI-only — no config key,
 > like `--pages`) > the **BibTeX citation key**
 > (`output.name_from_bibtex`, default true; e.g. `chang2025amortized`; the
@@ -468,6 +481,11 @@ A fourth, model-free utility subcommand rounds out the surface:
 allparts assembly — so post-OCR corrections can be applied **once, to the
 splits**, and the full document regenerated instead of edited in parallel
 (§11).
+
+A fifth subcommand sits outside the pipeline entirely: **`inscriber setup`**
+bootstraps a fresh install — it downloads the recommended GGUF pairs against
+a pinned registry and writes/updates the platform config (§13.4). It is the
+only subcommand with no input argument and no RunConfig.
 
 ---
 
@@ -1776,10 +1794,11 @@ offline = false                        # hard-disable all network use (the local
 
 ### 13.2 CLI surface (`cli.py`, argparse subparsers)
 
-Four subcommands (§3.1). `run` is the default — bare `inscriber INPUT` ≡
+Five subcommands (§3.1). `run` is the default — bare `inscriber INPUT` ≡
 `inscriber run INPUT`. Flags below are grouped by the stage they affect; each
 subcommand accepts only the groups relevant to it (`join` takes only
-`-c`, `--no-clobber`, `-v`/`-q`).
+`-c`, `--no-clobber`, `--no-full-suffix`, `-v`/`-q`; `setup` takes only its
+own group plus `-c`, `-v`/`-q`).
 
 ```
 inscriber run     INPUT [options]     # end-to-end (default)
@@ -1787,6 +1806,8 @@ inscriber ocr     INPUT [ocr-options] # OCR + crop → write OCR bundle, stop
 inscriber describe BUNDLE [vlm-options]# OCR bundle → VLM + assemble + write
 inscriber join    BASE                # rejoin {base}_main/_appendix/_backmatter.md
                                       #   into {base}_full.md (allparts form, §11)
+inscriber setup   [setup-options]     # download recommended models + write a
+                                      #   starter config (§13.4; no INPUT)
 
   # --- common ---
   INPUT                         PDF file path or http(s) URL   (run, ocr)
@@ -1850,6 +1871,13 @@ inscriber join    BASE                # rejoin {base}_main/_appendix/_backmatter
       --keep-intermediates      don't delete the work dir on success
   -v, --verbose / -q, --quiet
       --version
+
+  # --- setup only (model download + config bootstrap, §13.4) ---
+      --models-dir DIR          where the GGUFs land (default: platform data dir)
+      --llama-bin-dir DIR       written to the config ([llama].bin_dir)
+      --deepseek-quant QUANT    bf16 (default, recommended) | q8_0 (smaller)
+                                (setup's -c names the config file to WRITE —
+                                it need not exist yet, §13.4)
 ```
 
 > **`--no-figures` (= `--figure-detect none`) semantics** differ from paper2llm:
@@ -1896,6 +1924,55 @@ Every config field now has a CLI override (the §1.2 promise holds literally);
 `--server-timeout` and `--no-normalize-breaks` were added for that reason.
 `[figure]` straddles stages: `detect`/`crop_padding` are **ocr-stage** (baked
 into the bundle), `mode`/`context_chars` are **describe-stage** (§8.5).
+
+### 13.4 `inscriber setup` — model download + config bootstrap
+
+`inscriber setup` (the fifth subcommand, §3.1) turns a fresh install into a
+runnable one: it downloads the recommended GGUF pairs and writes the platform
+config. It lives **outside the pipeline** (`inscriber/setup.py`): no
+RunConfig, no servers, no caches — httpx, hashlib, and a config writer. It is
+inherently online and opt-in; it reads no config (it *writes* one), so
+`[net].offline` does not apply. Pinned by `tests/test_setup.py` (HTTP mocked
+at the transport boundary).
+
+- **Pinned registry.** Each managed file (DeepSeek-OCR BF16 — or Q8_0 via
+  `--deepseek-quant q8_0` — and Gemma 4 E4B QAT, each a model+mmproj pair)
+  carries its upstream URL plus the exact **byte size and sha256** published
+  by the Hugging Face API (the LFS `oid`, captured 2026-06-11). Downloads are
+  tamper-evident, and a silent upstream re-upload fails loudly with a pointer
+  to the README's manual-download table. **The registry pins and that README
+  table must be updated together.** The unsloth Gemma projector (upstream
+  name: the generic `mmproj-BF16.gguf`) is saved under a Gemma-specific local
+  name — the README's manual rename advice, baked in.
+- **Download mechanics.** Files land in `--models-dir` (default:
+  `platformdirs.user_data_dir("inscriber")/models`). Streaming goes to a
+  `{name}.part` with a `Range` resume (a 200 to a ranged request restarts
+  cleanly; a 416 means the partial is already complete and proceeds to
+  verification); only a size+hash-verified file is promoted to its final name
+  (atomic `Path.replace`). Re-running is idempotent: complete files are
+  hash-verified and skipped without any HTTP, partials resumed, and a hash
+  mismatch deletes the partial so the retry starts clean. A pre-existing
+  final file with the wrong size or hash is **never overwritten** — setup
+  errors and tells the user to delete it or pick another `--models-dir`. A
+  disk-space preflight (missing bytes + 1 GiB headroom) fails before any
+  download starts.
+- **Config write.** Target = `-c PATH`, default the **platform** config path
+  (§13.1) — unlike every other subcommand, setup's `-c` names a file that may
+  not exist yet (it is the write target, not an input). A missing target gets
+  a minimal commented config holding only the managed keys
+  (`[ocr]/[vlm] model/mmproj`, plus `[llama].bin_dir` when `--llama-bin-dir`
+  was given); an existing one is parse-merge-emitted — every key (known or
+  unknown) is preserved, **comments are not** (logged when it happens). Paths
+  are emitted `as_posix()` (forward slashes work on every platform and need
+  no TOML escaping). If `./config.toml` exists, setup notes that it shadows
+  the platform config when running from that directory.
+- **llama.cpp stays a manual step** — deliberately out of scope: the
+  OS × GPU-backend release matrix plus the ≥ 9587 build gate (§2.2) would
+  make auto-fetched binaries a support liability. Without `--llama-bin-dir`,
+  setup prints the releases URL and the build requirement as the one
+  remaining step; with it, setup warns when `llama-server` is not actually
+  there (the path is still written — install later).
+- **stdout contract (§16):** the model paths + the config path, one per line.
 
 ---
 
@@ -2051,6 +2128,12 @@ the inference layer at the **chat-client boundary**.
   pipeline-shaped splits, single regenerated notice (+ VLM-involvement
   inference), BibTeX-block re-prepend, hand-edit/CRLF tolerance, BASE
   resolution errors, CLI clobber behavior.
+- **`test_setup.py`** — the `setup` subcommand (§13.4): registry integrity
+  (roles/urls/pins), download mechanics against an httpx ``MockTransport``
+  (fresh / resume / ignored-Range restart / 416-complete / hash-mismatch
+  cleanup / verified-skip without HTTP / never-overwrite conflicts), the
+  disk-space preflight, fresh-vs-merge config writes (unknown keys preserved,
+  LF+UTF-8), and CLI dispatch.
 - **`test_stitch.py`** — header/footer stripping & de-hyphenation on crafted
   multi-page inputs.
 - **`test_config.py`** — TOML load, CLI-override precedence, validation errors

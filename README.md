@@ -76,6 +76,20 @@ pip install git+https://github.com/lacerbi/inscriber.git
 
 ## Setup
 
+Quick path: install llama.cpp (step 1 below), then let `inscriber setup` do
+steps 2–3 for you —
+
+```bash
+inscriber setup --llama-bin-dir /path/to/llama.cpp/bin
+```
+
+downloads the recommended models below (~11 GB; `--deepseek-quant q8_0` picks
+the smaller DeepSeek pair, ~8 GB) into the platform data dir, verifies each
+file against pinned checksums, and writes a ready-to-run config to the
+platform config dir. Interrupted downloads resume on re-run; already-complete
+files are verified and skipped. Prefer manual control? Steps 2–3 below do the
+same by hand.
+
 ### 1. llama.cpp
 
 Download a prebuilt release from
@@ -110,16 +124,18 @@ Sources: [sabafallah/DeepSeek-OCR-GGUF](https://huggingface.co/sabafallah/DeepSe
 [unsloth/gemma-4-E4B-it-qat-GGUF](https://huggingface.co/unsloth/gemma-4-E4B-it-qat-GGUF).
 unsloth's projector file is literally named `mmproj-BF16.gguf` — consider
 renaming it to something Gemma-specific if you keep models from several
-families in one folder.
+families in one folder (`inscriber setup` does this automatically, saving it
+as `mmproj-gemma-4-E4B-it-qat-BF16.gguf`).
 
 ### 3. Configuration
 
 Copy [`config.example.toml`](config.example.toml) to `config.toml` in the
 directory you run from (or the platform config dir, e.g.
 `%APPDATA%\inscriber\config.toml` on Windows, `~/.config/inscriber/config.toml`
-on Linux) and fill in the llama.cpp `bin_dir` and the four model paths. Every
-config field is also overridable from the CLI (precedence: CLI flag > config
-file > built-in default).
+on Linux) and fill in the llama.cpp `bin_dir` and the four model paths
+(`inscriber setup` writes these for you). Every config field is also
+overridable from the CLI (precedence: CLI flag > config file > built-in
+default).
 
 ## Usage
 

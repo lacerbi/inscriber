@@ -6,6 +6,10 @@
 #    or pass this file explicitly with: inscriber --config config.example.toml ...
 # 3. Leave options you do not need at their defaults.
 #
+# Shortcut: `inscriber setup` downloads the recommended models and writes the
+# model paths into the platform config.toml for you (see README.md); this file
+# is the full reference for everything else.
+#
 # Path notes:
 # - Use absolute paths for llama.cpp and GGUF files.
 # - On Windows, forward slashes are accepted, for example:
@@ -37,7 +41,8 @@ mode = "sequential"
 backend = "deepseek-ocr"
 
 # REQUIRED unless ocr.endpoint is set: DeepSeek-OCR model + multimodal projector
-# (download links in README.md). BF16 recommended; Q8_0 also verified working.
+# (download links in README.md, or let `inscriber setup` fetch them). BF16
+# recommended; Q8_0 also verified working.
 # Avoid Q4_K_M for DeepSeek-OCR — it causes runaway repetition loops.
 model = "C:/path/to/models/deepseek-ocr-bf16.gguf"
 mmproj = "C:/path/to/models/mmproj-deepseek-ocr-bf16.gguf"
@@ -60,7 +65,8 @@ endpoint = ""
 backend = "gemma"
 
 # REQUIRED unless vlm.endpoint is set: Gemma text model + multimodal projector
-# (download links in README.md; "mmproj-BF16.gguf" is unsloth's verbatim filename).
+# (download links in README.md; "mmproj-BF16.gguf" is unsloth's verbatim
+# filename — `inscriber setup` saves it under a Gemma-specific name instead).
 model = "C:/path/to/models/gemma-4-E4B-it-qat-UD-Q4_K_XL.gguf"
 mmproj = "C:/path/to/models/mmproj-BF16.gguf"
 

@@ -1,7 +1,10 @@
 """Command-line interface (DESIGN §13.2).
 
-Four subcommands — ``run`` (default), ``ocr``, ``describe``, ``join`` — sharing
-flag groups. Bare ``inscriber INPUT`` is shorthand for ``inscriber run INPUT``.
+Five subcommands — ``run`` (default), ``ocr``, ``describe``, ``join``,
+``setup`` — sharing flag groups. Bare ``inscriber INPUT`` is shorthand for
+``inscriber run INPUT``. ``setup`` (model download + config bootstrap, §13.4)
+bypasses the RunConfig machinery entirely — it has no input and may target a
+config file that doesn't exist yet.
 
 Every config field is overridable by a flag (the §1.2 "every field overridable"
 contract); unset flags default to ``None`` here so :func:`config.resolve_config`
@@ -24,7 +27,7 @@ from inscriber.config import (
 from inscriber.errors import InscriberError
 from inscriber.logging import get_logger, setup_logging
 
-SUBCOMMANDS = ("run", "ocr", "describe", "join")
+SUBCOMMANDS = ("run", "ocr", "describe", "join", "setup")
 
 
 def _ngl(value: str):
@@ -165,7 +168,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--version", action="version", version=f"inscriber {__version__}")
     sub = parser.add_subparsers(
-        dest="command", required=True, metavar="{run,ocr,describe,join}"
+        dest="command", required=True, metavar="{run,ocr,describe,join,setup}"
     )
 
     # run — end-to-end (default)
@@ -229,6 +232,31 @@ def build_parser() -> argparse.ArgumentParser:
                         help="verbose logging (DEBUG)")
     p_join.add_argument("-q", "--quiet", action="store_true", default=False,
                         help="quiet logging (WARNING)")
+
+    # setup — download recommended models + write a starter config (no input)
+    p_setup = sub.add_parser(
+        "setup",
+        help="download the recommended models (~11 GB) and write a starter config",
+    )
+    p_setup.set_defaults(command="setup")
+    p_setup.add_argument(
+        "-c", "--config", dest="config", default=None, metavar="PATH",
+        help="config file to write or update (default: the platform config "
+             "path; unlike other commands, it need not exist yet)",
+    )
+    p_setup.add_argument("--models-dir", dest="models_dir", default=None, metavar="DIR",
+                         help="where the GGUFs land (default: the platform data dir)")
+    p_setup.add_argument("--llama-bin-dir", dest="llama_bin_dir", default=None,
+                         metavar="DIR",
+                         help="folder containing llama-server[.exe]; written to the config")
+    p_setup.add_argument("--deepseek-quant", dest="deepseek_quant",
+                         choices=("bf16", "q8_0"), default="bf16",
+                         help="DeepSeek-OCR quant: bf16 (recommended) or the "
+                              "smaller q8_0 (both verified; never Q4_K_M)")
+    p_setup.add_argument("-v", "--verbose", action="count", default=0,
+                         help="verbose logging (DEBUG)")
+    p_setup.add_argument("-q", "--quiet", action="store_true", default=False,
+                         help="quiet logging (WARNING)")
 
     return parser
 
@@ -353,6 +381,28 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)  # --version / -h exit here via argparse actions
     setup_logging(args.verbose, args.quiet)
     logger = get_logger()
+
+    if args.command == "setup":
+        # Bootstrap command (DESIGN §13.4): no input, no RunConfig — and -c may
+        # name a config that doesn't exist yet, so load_config_file must not run.
+        from inscriber.setup import run_setup
+
+        try:
+            written = run_setup(
+                config_path=args.config,
+                models_dir=args.models_dir,
+                llama_bin_dir=args.llama_bin_dir,
+                deepseek_quant=args.deepseek_quant,
+            )
+        except InscriberError as e:
+            logger.error("%s", e)
+            return 1
+        except KeyboardInterrupt:  # pragma: no cover - interactive
+            logger.error("interrupted (re-run setup to resume the download)")
+            return 130
+        for path in written:
+            print(path)
+        return 0
 
     try:
         file_dict, _ = load_config_file(args.config)

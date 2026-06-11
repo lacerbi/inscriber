@@ -59,12 +59,16 @@ context must see clean tables; the text-only probe shares the open VLM
 session) → stitch/clean → split (main/appendix/backmatter) → BibTeX (default
 `auto`: provenance/probe citability → source chain; DESIGN §12) → write.
 
-- **Four subcommands**: `run` (end-to-end), `ocr` (writes a portable _bundle_:
+- **Five subcommands**: `run` (end-to-end), `ocr` (writes a portable _bundle_:
   `manifest.json` + `figures/` crops + `pages/` rasters for table pages),
-  `describe` (bundle → VLM + assembly, no OCR model), and `join` (rejoin
+  `describe` (bundle → VLM + assembly, no OCR model), `join` (rejoin
   possibly hand-edited `{base}_main/_appendix/_backmatter.md` splits into
   `{base}_full.md` — the §11 allparts form; pure text, no models/config
-  needed). Output base name (DESIGN §14): explicit `--name` > the BibTeX
+  needed), and `setup` (DESIGN §13.4: downloads the recommended GGUFs against
+  a **pinned sha256/size registry** in `inscriber/setup.py` and writes/updates
+  the platform `config.toml`; outside the pipeline — no RunConfig. The
+  registry pins and the README model table must change together). Output
+  base name (DESIGN §14): explicit `--name` > the BibTeX
   citation key (`name_from_bibtex`, default on; e.g. `chang2025amortized`) >
   source-derived.
   `run` = `ocr` + `describe` sharing in-memory objects. The bundle's

@@ -82,9 +82,6 @@ Legend: `[ ]` todo · `[!]` blocked.
 - [ ] **Publish to PyPI** — the name `inscriber` was verified available
       (DESIGN §18) but nothing is published yet; README documents source
       install until then.
-- [ ] **Model auto-download helper** — optional command to fetch the recommended
-      GGUFs from Hugging Face (kept out of the core pipeline; opt-in, online —
-      README.md's model table has the direct links to start from).
 - [ ] **Alternate BibTeX sources** — Crossref / arXiv API as fallbacks to
       Semantic Scholar (unauthenticated 429s are common in practice; the
       degrade path is DESIGN §12), or fully-offline extraction from the paper's
