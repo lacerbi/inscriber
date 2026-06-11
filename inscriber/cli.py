@@ -110,6 +110,12 @@ def _add_vlm_stage(p: argparse.ArgumentParser) -> None:
 
 
 def _add_output_stage(p: argparse.ArgumentParser) -> None:
+    p.add_argument("--name", dest="name", default=None, metavar="NAME",
+                   help="output base name (default: the BibTeX citation key when "
+                        "available, else derived from the source)")
+    p.add_argument("--no-bibtex-name", dest="name_from_bibtex", action="store_const",
+                   const=False, default=None,
+                   help="never derive the base name from the BibTeX citation key")
     p.add_argument("--no-split", dest="split", action="store_const", const=False,
                    default=None, help="write only the full document")
     p.add_argument("--page-numbers", dest="page_numbers", action="store_const",
@@ -183,6 +189,10 @@ def build_parser() -> argparse.ArgumentParser:
                        help='1-indexed inclusive, e.g. "1-10","3","5-","-12","all"')
     _add_inference(p_ocr, include_mode=False)
     _add_ocr_stage(p_ocr)
+    # Explicit base name only: at ocr time no BibTeX exists, so the bundle can
+    # never get a citation-key name (DESIGN §14) — hence no --no-bibtex-name here.
+    p_ocr.add_argument("--name", dest="name", default=None, metavar="NAME",
+                       help="bundle base name (default: derived from the source)")
     _add_caching(p_ocr)
 
     # describe — OCR bundle → VLM + assemble + write
@@ -197,18 +207,18 @@ def build_parser() -> argparse.ArgumentParser:
 
     # join — rejoin (possibly hand-edited) split files into {base}.md
     p_join = sub.add_parser(
-        "join", help="rejoin {base}.main/.appendix/.backmatter.md into {base}.md"
+        "join", help="rejoin {base}_main/_appendix/_backmatter.md into {base}_full.md"
     )
     p_join.set_defaults(command="join")
     p_join.add_argument(
         "input", metavar="BASE",
-        help="base path (out/paper), the {base}.main.md file, or a directory "
+        help="base path (out/paper), the {base}_main.md file, or a directory "
              "containing exactly one set of splits",
     )
     p_join.add_argument("-c", "--config", dest="config", default=None, metavar="PATH",
                         help="config file (default: ./config.toml, then platform config dir)")
     p_join.add_argument("--no-clobber", dest="clobber", action="store_const", const=False,
-                        default=None, help="error instead of overwriting {base}.md")
+                        default=None, help="error instead of overwriting {base}_full.md")
     p_join.add_argument("-v", "--verbose", action="count", default=0,
                         help="verbose logging (DEBUG)")
     p_join.add_argument("-q", "--quiet", action="store_true", default=False,
@@ -268,6 +278,8 @@ def collect_cli_sections(args: argparse.Namespace) -> dict[str, dict]:
     setv("vlm", "endpoint", g("vlm_endpoint"))
     # output
     setv("output", "dir", g("output_dir"))
+    setv("output", "name", g("name"))
+    setv("output", "name_from_bibtex", g("name_from_bibtex"))
     setv("output", "split", g("split"))
     setv("output", "page_numbers", g("page_numbers"))
     setv("output", "page_separators", g("page_separators"))

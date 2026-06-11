@@ -70,7 +70,7 @@ def _write_splits(out_dir, base="paper", *, notice=True, vlm_tables=False, bibte
     write_split_documents(
         out_dir, base, main=main, appendix=appendix, backmatter=backmatter, clobber=True
     )
-    return out_dir / f"{base}.main.md"
+    return out_dir / f"{base}_main.md"
 
 
 def _expected_core():
@@ -118,7 +118,7 @@ def test_no_notice_splits(tmp_path):
 def test_main_only(tmp_path):
     main, _, _ = _formatted_sections()
     main_path = write_text_file(
-        tmp_path / "paper.main.md", append_transcription_notice(main), clobber=True
+        tmp_path / "paper_main.md", append_transcription_notice(main), clobber=True
     )
     assert join_split_files(main_path) == append_transcription_notice(main)
 
@@ -127,7 +127,7 @@ def test_crlf_split_tolerated(tmp_path):
     # A hand-edit on Windows may save CRLF; the notice must still be stripped.
     main, _, _ = _formatted_sections()
     crlf = append_transcription_notice(main).replace("\n", "\r\n")
-    main_path = tmp_path / "paper.main.md"
+    main_path = tmp_path / "paper_main.md"
     main_path.write_bytes(crlf.encode("utf-8"))
     assert join_split_files(main_path) == append_transcription_notice(main)
 
@@ -154,7 +154,7 @@ def test_resolve_accepts_base_main_file_and_dir(tmp_path):
 def test_resolve_errors(tmp_path):
     with pytest.raises(JoinError, match="not found"):
         resolve_join_input(tmp_path / "missing")
-    with pytest.raises(JoinError, match="no \\*.main.md"):
+    with pytest.raises(JoinError, match="no \\*_main.md"):
         resolve_join_input(tmp_path)
     _write_splits(tmp_path, "a")
     _write_splits(tmp_path, "b")
@@ -177,7 +177,7 @@ def test_cli_join_writes_full_document(tmp_path, capsys):
     _write_splits(tmp_path)
     rc = cli_main(["join", str(tmp_path / "paper"), "-c", _empty_config(tmp_path)])
     assert rc == 0
-    out_file = tmp_path / "paper.md"
+    out_file = tmp_path / "paper_full.md"
     assert out_file.is_file()
     assert out_file.read_text(encoding="utf-8") == append_transcription_notice(_expected_core())
     assert str(out_file) in capsys.readouterr().out
@@ -185,12 +185,12 @@ def test_cli_join_writes_full_document(tmp_path, capsys):
 
 def test_cli_join_no_clobber(tmp_path):
     _write_splits(tmp_path)
-    write_text_file(tmp_path / "paper.md", "existing\n", clobber=True)
+    write_text_file(tmp_path / "paper_full.md", "existing\n", clobber=True)
     rc = cli_main([
         "join", str(tmp_path / "paper"), "--no-clobber", "-c", _empty_config(tmp_path)
     ])
     assert rc == 1
-    assert (tmp_path / "paper.md").read_text(encoding="utf-8") == "existing\n"
+    assert (tmp_path / "paper_full.md").read_text(encoding="utf-8") == "existing\n"
 
 
 def test_cli_join_missing_input(tmp_path):

@@ -579,7 +579,7 @@ def test_run_refines_table_with_cropped_input(tmp_path, monkeypatch, hermetic_ca
     cfg = _base_cfg(tmp_path, _dummy_models(tmp_path), out)
     pipeline.run(cfg)
 
-    text = (out / "sample_paper.md").read_text(encoding="utf-8")
+    text = (out / "sample_paper_full.md").read_text(encoding="utf-8")
     assert PIPE_TABLE in text  # blob replaced by the restructured table
     assert "<table" not in text
     assert "> **Image description.** A line chart trending upward." in text
@@ -616,7 +616,7 @@ def test_no_table_refine_keeps_blob(tmp_path, monkeypatch, hermetic_cache):
     cfg = _base_cfg(tmp_path, _dummy_models(tmp_path), out)
     cfg.table.refine = False
     pipeline.run(cfg)
-    text = (out / "sample_paper.md").read_text(encoding="utf-8")
+    text = (out / "sample_paper_full.md").read_text(encoding="utf-8")
     assert BLOB in text
     assert calls.prompts == []
 
@@ -626,7 +626,7 @@ def test_truncated_table_keeps_blob(tmp_path, monkeypatch, hermetic_cache):
     out = tmp_path / "out"
     cfg = _base_cfg(tmp_path, _dummy_models(tmp_path), out)
     pipeline.run(cfg)
-    text = (out / "sample_paper.md").read_text(encoding="utf-8")
+    text = (out / "sample_paper_full.md").read_text(encoding="utf-8")
     assert BLOB in text  # truncated output discarded, original kept
     assert PIPE_TABLE not in text
 
@@ -636,7 +636,7 @@ def test_commentary_table_output_keeps_blob(tmp_path, monkeypatch, hermetic_cach
     out = tmp_path / "out"
     cfg = _base_cfg(tmp_path, _dummy_models(tmp_path), out)
     pipeline.run(cfg)
-    text = (out / "sample_paper.md").read_text(encoding="utf-8")
+    text = (out / "sample_paper_full.md").read_text(encoding="utf-8")
     assert BLOB in text
 
 
@@ -649,7 +649,7 @@ def test_value_dropping_table_output_keeps_blob(tmp_path, monkeypatch, hermetic_
     out = tmp_path / "out"
     cfg = _base_cfg(tmp_path, _dummy_models(tmp_path), out)
     pipeline.run(cfg)
-    text = (out / "sample_paper.md").read_text(encoding="utf-8")
+    text = (out / "sample_paper_full.md").read_text(encoding="utf-8")
     assert BLOB in text
     assert "| Model | OLS |" not in text
 
@@ -660,7 +660,7 @@ def test_tables_refined_even_without_figures(tmp_path, monkeypatch, hermetic_cac
     cfg = _base_cfg(tmp_path, _dummy_models(tmp_path), out)
     cfg.figure.detect = "none"  # --no-figures must not disable table refinement
     pipeline.run(cfg)
-    text = (out / "sample_paper.md").read_text(encoding="utf-8")
+    text = (out / "sample_paper_full.md").read_text(encoding="utf-8")
     assert PIPE_TABLE in text
     assert "Image description" not in text
     # VLM credited for tables even with no figure descriptions:
@@ -678,7 +678,7 @@ def test_concurrent_mode_refines_tables(tmp_path, monkeypatch, hermetic_cache):
     cfg = _base_cfg(tmp_path, _dummy_models(tmp_path), out)
     cfg.inference.mode = "concurrent"
     pipeline.run(cfg)
-    text = (out / "sample_paper.md").read_text(encoding="utf-8")
+    text = (out / "sample_paper_full.md").read_text(encoding="utf-8")
     assert PIPE_TABLE in text
     assert len(calls.prompts) == 1
 
@@ -698,7 +698,7 @@ def test_multiple_grounded_tables_get_distinct_crops(tmp_path, monkeypatch, herm
         assert "cropped view of the table" in prompt
         assert "This page contains" not in prompt
     assert calls.images[0] != calls.images[1]  # different bboxes → different crops
-    text = (out / "sample_paper.md").read_text(encoding="utf-8")
+    text = (out / "sample_paper_full.md").read_text(encoding="utf-8")
     assert "<table" not in text
     assert text.count("| Dep. Variable | CC |") == 2  # both blobs replaced
 
@@ -725,7 +725,7 @@ def test_ungrounded_tables_fall_back_to_page_with_locators(
     assert calls.images[0] == calls.ocr_images[0]  # whole page raster sent
     assert calls.images[1] == calls.ocr_images[0]
     assert "no grounded table region matched" in caplog.text
-    text = (out / "sample_paper.md").read_text(encoding="utf-8")
+    text = (out / "sample_paper_full.md").read_text(encoding="utf-8")
     assert "<table" not in text
 
 
@@ -758,7 +758,7 @@ def test_tables_skipped_gracefully_without_vlm_config(tmp_path, monkeypatch, her
     cfg.ocr.mmproj = models["ocr_mmproj"]
     cfg.figure.detect = "none"  # text-only user: no VLM configured at all
     pipeline.run(cfg)  # must not raise
-    text = (out / "sample_paper.md").read_text(encoding="utf-8")
+    text = (out / "sample_paper_full.md").read_text(encoding="utf-8")
     assert BLOB in text  # blob kept, run completed
     assert text.rstrip().endswith(
         "*Transcribed with OCR; text, equations, and tables may contain mistakes.*"
@@ -834,7 +834,7 @@ def test_describe_refines_tables_from_bundle(
     dcfg.vlm.mmproj = models["vlm_mmproj"]
     pipeline.describe(dcfg)
 
-    text = (out / "sample_paper.md").read_text(encoding="utf-8")
+    text = (out / "sample_paper_full.md").read_text(encoding="utf-8")
     assert PIPE_TABLE in text
     assert "<table" not in text
     assert len(calls.prompts) == 1
@@ -887,7 +887,7 @@ def test_describe_old_bundle_without_raster_keeps_blob(
     dcfg.vlm.mmproj = models["vlm_mmproj"]
     pipeline.describe(dcfg)  # degrades gracefully (warning), never fails
 
-    text = (out / "sample_paper.md").read_text(encoding="utf-8")
+    text = (out / "sample_paper_full.md").read_text(encoding="utf-8")
     assert BLOB in text
     assert calls.prompts == []
 

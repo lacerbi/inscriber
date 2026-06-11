@@ -98,11 +98,11 @@ def test_full_run_mocked(tmp_path, monkeypatch, hermetic_cache):
 
     written = pipeline.run(cfg)
 
-    assert (out / "sample_paper.md").is_file()
-    assert (out / "sample_paper.main.md").is_file()
-    assert str(out / "sample_paper.md") in written
+    assert (out / "sample_paper_full.md").is_file()
+    assert (out / "sample_paper_main.md").is_file()
+    assert str(out / "sample_paper_full.md") in written
 
-    text = (out / "sample_paper.md").read_text(encoding="utf-8")
+    text = (out / "sample_paper_full.md").read_text(encoding="utf-8")
     assert "> **Image description.** A line chart trending upward." in text
     assert "⟦INSCRIBER_FIG" not in text  # placeholder consumed
     assert "## Abstract" in text  # OCR text carried through
@@ -129,7 +129,7 @@ def test_concurrent_mode_runs(tmp_path, monkeypatch, hermetic_cache):
     cfg = _base_cfg(tmp_path, _dummy_models(tmp_path), out)
     cfg.inference.mode = "concurrent"  # pre-launches the VLM server alongside OCR
     pipeline.run(cfg)
-    text = (out / "sample_paper.md").read_text(encoding="utf-8")
+    text = (out / "sample_paper_full.md").read_text(encoding="utf-8")
     assert "> **Image description.** A line chart trending upward." in text
 
 
@@ -139,7 +139,7 @@ def test_describe_and_keep_copies_figures(tmp_path, monkeypatch, hermetic_cache)
     cfg = _base_cfg(tmp_path, _dummy_models(tmp_path), out)
     cfg.figure.mode = "describe-and-keep"
     pipeline.run(cfg)
-    text = (out / "sample_paper.md").read_text(encoding="utf-8")
+    text = (out / "sample_paper_full.md").read_text(encoding="utf-8")
     assert "![" in text and "figures/fig_p1_1.png" in text  # image ref kept
     assert (out / "figures" / "fig_p1_1.png").is_file()  # crop copied to output
 
@@ -150,7 +150,7 @@ def test_page_numbers_survive_into_document(tmp_path, monkeypatch, hermetic_cach
     cfg = _base_cfg(tmp_path, _dummy_models(tmp_path), out)
     cfg.output.page_numbers = True
     pipeline.run(cfg)
-    text = (out / "sample_paper.md").read_text(encoding="utf-8")
+    text = (out / "sample_paper_full.md").read_text(encoding="utf-8")
     assert "#### Page 1" in text
 
 
@@ -160,7 +160,7 @@ def test_notice_can_be_disabled(tmp_path, monkeypatch, hermetic_cache):
     cfg = _base_cfg(tmp_path, _dummy_models(tmp_path), out)
     cfg.output.notice = False
     pipeline.run(cfg)
-    text = (out / "sample_paper.md").read_text(encoding="utf-8")
+    text = (out / "sample_paper_full.md").read_text(encoding="utf-8")
     assert "Transcribed with OCR" not in text
 
 
@@ -210,12 +210,12 @@ def test_unknown_build_warns_but_runs(tmp_path, monkeypatch, hermetic_cache):
     out = tmp_path / "out"
     cfg = _base_cfg(tmp_path, _dummy_models(tmp_path), out)
     pipeline.run(cfg)
-    assert (out / "sample_paper.md").is_file()
+    assert (out / "sample_paper_full.md").is_file()
 
 
 def test_split_files_get_correct_sections(tmp_path):
     # Regression: prepare_formatted_sections returns (main, backmatter, appendix);
-    # the pipeline must unpack in that order so .appendix.md / .backmatter.md aren't swapped.
+    # the pipeline must unpack in that order so _appendix.md / _backmatter.md aren't swapped.
     out = tmp_path / "out"
     cfg = RunConfig(command="run", input="x")
     cfg.output.dir = str(out)
@@ -225,8 +225,8 @@ def test_split_files_get_correct_sections(tmp_path):
         "## Appendix\n\nExtra derivations.\n"
     )
     pipeline._write_documents(cfg, "p", full_md, out)
-    appendix = (out / "p.appendix.md").read_text(encoding="utf-8")
-    backmatter = (out / "p.backmatter.md").read_text(encoding="utf-8")
+    appendix = (out / "p_appendix.md").read_text(encoding="utf-8")
+    backmatter = (out / "p_backmatter.md").read_text(encoding="utf-8")
     assert appendix.startswith("# My Paper - Appendix")
     assert "Extra derivations" in appendix and "thank the reviewers" not in appendix
     assert backmatter.startswith("# My Paper - Backmatter")
@@ -282,6 +282,9 @@ def test_default_auto_bibtex_offline_citable_best_efforts(tmp_path, monkeypatch,
     out = tmp_path / "out"
     cfg = _base_cfg(tmp_path, _dummy_models(tmp_path), out)
     cfg.net.offline = True
+    # No year in the probe metadata → the citation key would embed the current
+    # year (clock-dependent name) — pin the source-derived name here.
+    cfg.output.name_from_bibtex = False
     written = pipeline.run(cfg)
     assert len(probe_calls) == 1
     bib = out / "sample_paper.bib"
@@ -289,6 +292,40 @@ def test_default_auto_bibtex_offline_citable_best_efforts(tmp_path, monkeypatch,
     text = bib.read_text(encoding="utf-8")
     assert text.startswith("% NOTE: Best-effort entry")
     assert "title={A Sample Paper}" in text
+
+
+def test_explicit_name_overrides_everything(tmp_path, monkeypatch, hermetic_cache):
+    # --name wins over both the bibtex key and the source name; it is sanitized.
+    probe_calls = _mock_inference(
+        monkeypatch,
+        probe_response='{"citable": true, "title": "A Sample Paper", '
+                       '"authors": ["Ada B"], "year": "2026"}',
+    )
+    out = tmp_path / "out"
+    cfg = _base_cfg(tmp_path, _dummy_models(tmp_path), out)
+    cfg.net.offline = True
+    cfg.output.name = "My Paper (v2)"
+    written = pipeline.run(cfg)
+    assert len(probe_calls) == 1
+    assert (out / "My_Paper_v2_full.md").is_file()
+    assert (out / "My_Paper_v2_main.md").is_file()
+    assert str(out / "My_Paper_v2.bib") in written  # entry produced, name pinned
+
+
+def test_mock_bibtex_entry_never_names_outputs(tmp_path, monkeypatch, hermetic_cache):
+    # on-mode's fallback mock (key unknownYear) is not a usable name source.
+    from inscriber.bibtex.semantic_scholar import mock_bibtex
+
+    _mock_inference(monkeypatch)
+    monkeypatch.setattr(
+        pipeline, "generate_bibtex", lambda title, **k: mock_bibtex(title)
+    )
+    out = tmp_path / "out"
+    cfg = _base_cfg(tmp_path, _dummy_models(tmp_path), out)
+    cfg.bibtex.mode = "on"
+    written = pipeline.run(cfg)
+    assert (out / "sample_paper_full.md").is_file()  # source-derived, not unknownYear
+    assert str(out / "sample_paper.bib") in written  # the mock is still written
 
 
 def test_run_no_figures_offline_smoke(tmp_path, monkeypatch, hermetic_cache):
@@ -307,8 +344,8 @@ def test_run_no_figures_offline_smoke(tmp_path, monkeypatch, hermetic_cache):
     cfg.net.offline = True
 
     pipeline.run(cfg)
-    assert (out / "sample_paper.md").is_file()
-    text = (out / "sample_paper.md").read_text(encoding="utf-8")
+    assert (out / "sample_paper_full.md").is_file()
+    text = (out / "sample_paper_full.md").read_text(encoding="utf-8")
     assert "⟦INSCRIBER_FIG" not in text
     assert "Image description" not in text  # no figures described
     assert text.rstrip().endswith("*Transcribed with OCR; text may contain mistakes.*")

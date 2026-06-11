@@ -79,7 +79,7 @@ def test_ocr_then_describe_roundtrip(tmp_path, monkeypatch, hermetic_cache, fixt
     dcfg = RunConfig(command="describe", input=str(bundle_dir))
     dcfg.output.dir = str(out)
     written2 = pipeline.describe(dcfg)
-    paper_md = out / "sample_paper.md"
+    paper_md = out / "sample_paper_full.md"
     assert paper_md in [Path(p) for p in written2]
     text = paper_md.read_text(encoding="utf-8")
     assert "> **Image description.** A line chart trending upward." in text
@@ -105,7 +105,7 @@ def test_hand_edited_page_survives(tmp_path, monkeypatch, hermetic_cache, fixtur
     dcfg = RunConfig(command="describe", input=str(bundle_dir))
     dcfg.output.dir = str(out)
     pipeline.describe(dcfg)
-    text = (out / "sample_paper.md").read_text(encoding="utf-8")
+    text = (out / "sample_paper_full.md").read_text(encoding="utf-8")
     assert "## Edited Abstract" in text
 
 
@@ -126,15 +126,31 @@ def test_describe_with_bibtex_injection(tmp_path, monkeypatch, hermetic_cache, f
     dcfg.bibtex.append_to_document = True
     written = pipeline.describe(dcfg)
 
-    bib = out / "sample_paper.bib"
+    # name_from_bibtex (default): the entry's citation key names every output.
+    bib = out / "key2026.bib"
     assert bib in [Path(p) for p in written]
     assert "@article{key2026," in bib.read_text(encoding="utf-8")
     # injected (prepended, fenced, --- separator) into the full doc and main split:
-    full = (out / "sample_paper.md").read_text(encoding="utf-8")
+    full = (out / "key2026_full.md").read_text(encoding="utf-8")
     assert full.startswith("```\n@article{key2026,")
     assert "\n```\n\n---\n\n" in full
-    main = (out / "sample_paper.main.md").read_text(encoding="utf-8")
+    main = (out / "key2026_main.md").read_text(encoding="utf-8")
     assert main.startswith("```\n@article{key2026,")
+
+
+def test_ocr_explicit_name_names_the_bundle(
+    tmp_path, monkeypatch, hermetic_cache, fixture_pages_results
+):
+    # --name applies to the ocr bundle; bibtex-derived naming never can (no
+    # BibTeX exists at ocr time, DESIGN §14).
+    pages, results = fixture_pages_results
+    out = tmp_path / "out"
+    monkeypatch.setattr(pipeline, "run_ocr_pass", lambda cfg, resolved, work: (pages, results))
+    cfg = _ocr_cfg(tmp_path, out)
+    cfg.output.name = "custom name"
+    bundle_dir = Path(pipeline.run_ocr(cfg)[0])
+    assert bundle_dir.name == "custom_name.inscriber-ocr"
+    assert read_bundle(bundle_dir).source_name == "custom_name"
 
 
 def test_higher_bundle_schema_rejected(tmp_path):

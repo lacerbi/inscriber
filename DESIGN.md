@@ -12,7 +12,17 @@
 > `paper2llm`). It is written to be read entirely standalone — every concept,
 > dependency, and external quirk needed to build v1 is described here.
 >
-> **Last updated:** 2026-06-10 (§2.2/§22.2: **DeepSeek-OCR-2 spike ran —
+> **Last updated:** 2026-06-11 (§13/§14: **output naming** — the base name now
+> resolves as explicit `output.name`/`--name` > the **BibTeX citation key**
+> (`output.name_from_bibtex`, default true; e.g. `chang2025amortized`; the
+> `on`-mode mock never names files; passive — never triggers lookups) > the
+> source-derived name; suffixes switched **dot → underscore** with an explicit
+> `_full` part (`{base}_full/_main/_appendix/_backmatter.md` + `{base}.bib`;
+> no bare `{base}.md` anymore; pre-release, no legacy dot-name support — same
+> stance as the `enabled` removal below); the `.bib` write moved after name
+> resolution (`_finalize_outputs`); `ocr` gained `--name` (bundle name — a
+> bundle can never get a citation-key name, §8.5/§14); `join` follows the new
+> scheme. Previously 2026-06-10 — §2.2/§22.2: **DeepSeek-OCR-2 spike ran —
 > adoption deferred.** Format + per-axis frame confirmed under tiling (the
 > M1a calibration discipline; frame render-size-invariant, `grid_to_norm`
 > carries over) and the v1 known-loop page completes cleanly with per-row
@@ -450,9 +460,10 @@ the same serialization (§8.6).
 
 A fourth, model-free utility subcommand rounds out the surface:
 **`inscriber join BASE`** rejoins the (possibly hand-edited) split files
-`{base}.main/.appendix/.backmatter.md` into `{base}.md` — the §11 allparts
-assembly — so post-OCR corrections can be applied **once, to the splits**, and
-the full document regenerated instead of edited in parallel (§11).
+`{base}_main/_appendix/_backmatter.md` into `{base}_full.md` — the §11
+allparts assembly — so post-OCR corrections can be applied **once, to the
+splits**, and the full document regenerated instead of edited in parallel
+(§11).
 
 ---
 
@@ -963,7 +974,11 @@ Notes:
   - `figure.detect = none` / `--no-figures` at describe time **skips description**
     of bundled figures (leaves the figure out, or as a bare image ref if
     `describe-and-keep` — define as: drop the description, keep nothing).
-  - **Output base name** comes from `manifest.source.name` (no PDF to derive from).
+  - **Output base name** resolves per §14 (explicit `--name` > BibTeX citation
+    key > `manifest.source.name` — the only source-derived name available, no
+    PDF present). The bundle directory itself is named at `ocr` time
+    (`{base}.inscriber-ocr`, explicit `--name` or source-derived) — never by a
+    citation key, since no BibTeX exists yet.
 - `describe` also validates that every referenced `crop_path` exists.
 
 ### 8.6 OCR cache (`cache.py`)
@@ -1465,9 +1480,9 @@ This is the basis for the standalone full file (§14) and the
 append-BibTeX-to-document option (§12).
 
 **`inscriber join BASE` (the rejoin subcommand).** Reads
-`{base}.main/.appendix/.backmatter.md` (BASE = a base path, the `.main.md`
+`{base}_main/_appendix/_backmatter.md` (BASE = a base path, the `_main.md`
 file, or a directory holding exactly one set of splits) and regenerates
-`{base}.md` next to them — no models, servers, or config required. The
+`{base}_full.md` next to them — no models, servers, or config required. The
 standalone split files already carry the allparts framing, so joining strips
 each file's **per-file extras** — the transcription-notice footer, and main's
 prepended BibTeX block — concatenates in the allparts order above, then
@@ -1476,10 +1491,10 @@ notice crediting "OCR and VLMs" on any split carries VLM involvement into the
 joined notice). The intended workflow: hand-correct the splits once, `join`,
 and the full document follows — instead of applying every fix twice. ⚠️ The
 joined document is the **allparts form**: appendix precedes backmatter under
-derived headings, which deliberately differs from `run`'s original `{base}.md`
-(source order, original headings) — rejoining from splits cannot recover
-source order. Implementation: `postprocess/join.py`; `pipeline.join_splits`;
-pinned by `tests/test_join.py`.
+derived headings, which deliberately differs from `run`'s original
+`{base}_full.md` (source order, original headings) — rejoining from splits
+cannot recover source order. Implementation: `postprocess/join.py`;
+`pipeline.join_splits`; pinned by `tests/test_join.py`.
 
 ---
 
@@ -1585,7 +1600,8 @@ citable; skipping | skipped: <reason>>`.
   as the best match. Exact call (verified 2026-06-09):
   `GET https://api.semanticscholar.org/graph/v1/paper/search?query={url-encoded title}&limit=3&fields=title,authors,venue,year,abstract,externalIds,url`,
   response taken from `data.data[0]`. Generate a citation key
-  `{firstAuthorLastName}{year}{firstSubstantiveTitleWord}` where: author part = the
+  `{firstAuthorLastName}{year}{firstSubstantiveTitleWord}` (shared by every
+  §12.1 source too; it doubles as the default output base name, §14) where: author part = the
   last whitespace-token of the first author, lowercased; the title word is the first
   one that is `>2` chars and not a skip-word after stripping non-alphanumerics
   (skip-words, verbatim: `["a","an","the","on","in","of","for","and","or"]`), else
@@ -1622,7 +1638,7 @@ fallback mock citation.` — is assembled in **`content-utils.ts`**
   _mock_ branch; inscriber **standardizes on the one 4-line form above** for both
   paths, intentionally.)
 - **Placement** (`content-utils.ts` `getContentWithOptionalBibtex`):
-  - write a standalone `paper.bib` (default); **and/or**
+  - write a standalone `{base}.bib` (default); **and/or**
   - **inject the entry into the document** (`bibtex.append_to_document`). ⚠️
     paper2llm **prepends** it (before the content) and wraps it in a **fenced
     code block** with a `---` separator — not a bare append:
@@ -1719,6 +1735,13 @@ refine = true                          # VLM-restructure DeepSeek <table> blobs 
 
 [output]
 dir = "."                              # output directory
+name = ""                              # explicit output base name ("" = auto;
+                                       #   sanitized; with `ocr` it also names
+                                       #   the bundle directory)
+name_from_bibtex = true                # no explicit name + an entry produced →
+                                       #   the BibTeX citation key names the
+                                       #   outputs (chang2025amortized, §14);
+                                       #   else the source-derived name
 split = true                           # also write main/appendix/backmatter
 page_numbers = false                   # insert "#### Page N" before each page
 page_separators = false                # insert "---" between pages
@@ -1757,13 +1780,13 @@ subcommand accepts only the groups relevant to it (`join` takes only
 inscriber run     INPUT [options]     # end-to-end (default)
 inscriber ocr     INPUT [ocr-options] # OCR + crop → write OCR bundle, stop
 inscriber describe BUNDLE [vlm-options]# OCR bundle → VLM + assemble + write
-inscriber join    BASE                # rejoin {base}.main/.appendix/.backmatter.md
-                                      #   into {base}.md (allparts form, §11)
+inscriber join    BASE                # rejoin {base}_main/_appendix/_backmatter.md
+                                      #   into {base}_full.md (allparts form, §11)
 
   # --- common ---
   INPUT                         PDF file path or http(s) URL   (run, ocr)
   BUNDLE                        path to a *.inscriber-ocr dir   (describe)
-  BASE                          base path, {base}.main.md, or splits dir (join)
+  BASE                          base path, {base}_main.md, or splits dir (join)
   -c, --config PATH             config file (default: ./config.toml, then platform config dir)
   -o, --output-dir DIR          output directory (default: cwd)
       --pages RANGE             1-indexed inclusive, e.g. "1-10","3","5-","-12","all" (run, ocr)
@@ -1798,6 +1821,9 @@ inscriber join    BASE                # rejoin {base}.main/.appendix/.backmatter
       --no-table-refine         keep raw OCR tables (skip VLM restructuring, §9.7)
 
   # --- output / assembly (run, describe) ---
+      --name NAME               explicit output base name (§14; `ocr` also
+                                accepts it — there it names the bundle)
+      --no-bibtex-name          never use the BibTeX citation key as base name
       --no-split                write only the full document
       --page-numbers            insert "#### Page N" before each page
       --page-separators         insert "---" between pages
@@ -1843,6 +1869,7 @@ inscriber join    BASE                # rejoin {base}.main/.appendix/.backmatter
 | `figure.mode`                                          | `--figure-mode`                                                                   |
 | `figure.crop_padding` / `figure.context_chars`         | `--crop-padding` / `--context-chars`                                              |
 | `table.refine`                                         | `--no-table-refine` (sets false)                                                  |
+| `output.name` / `output.name_from_bibtex`              | `--name` (run, ocr, describe) / `--no-bibtex-name` (sets false)                   |
 | `output.dir`                                           | `-o/--output-dir`                                                                 |
 | `output.split`                                         | `--no-split` (sets false)                                                         |
 | `output.page_numbers` / `output.page_separators`       | `--page-numbers` / `--page-separators`                                            |
@@ -1865,27 +1892,43 @@ into the bundle), `mode`/`context_chars` are **describe-stage** (§8.5).
 
 ## 14. Output layout (`output.py`)
 
-Given `INPUT` resolving to a base name `paper` and output dir `OUT`:
+Given a resolved base name `chang2025amortized` and output dir `OUT`:
 
 ```
 OUT/
-├── paper.md                  # full document (always)
-├── paper.main.md             # if split = true and split succeeded
-├── paper.appendix.md         # if an appendix section was detected
-├── paper.backmatter.md       # if a backmatter section was detected
-├── paper.bib                 # when BibTeX produced an entry (default auto, §12)
-└── figures/                  # if figure-mode keeps images
+├── chang2025amortized_full.md        # full document (always)
+├── chang2025amortized_main.md        # if split = true and split succeeded
+├── chang2025amortized_appendix.md    # if an appendix section was detected
+├── chang2025amortized_backmatter.md  # if a backmatter section was detected
+├── chang2025amortized.bib            # when BibTeX produced an entry (§12)
+└── figures/                          # if figure-mode keeps images
     ├── fig_p1_1.png
     └── ...
 ```
 
-- Base name: for `run`/`ocr`, the PDF filename **stem** (`Path(...).stem`) or the
-  domain handler's `file_name(url)`; for `describe`, `manifest.source.name`
-  (no PDF present, §8.5). Sanitize so a source literally named `paper.main.pdf`
-  can't collide with the `paper.main.md` split output.
-- `paper.md` is the **full** document (the enhanced, stitched markdown). After
-  hand-editing the splits, `inscriber join OUT/paper` regenerates it from them
-  (in the §11 allparts form).
+- **Base-name resolution** (`_resolve_output_base`; one INFO line always says
+  which name won and why):
+  1. **`output.name` / `--name`** — explicit override, sanitized.
+  2. **The BibTeX citation key** (`output.name_from_bibtex`, default **true**)
+     — when the run produced an entry (§12), its key
+     (`{firstAuthorLastName}{year}{firstSubstantiveTitleWord}`, §12.2) names
+     the outputs. Passive: it only consumes an entry the bibtex stage produced
+     anyway (never triggers lookups/probes), and the `on`-mode **fallback mock
+     never names files** (detected by its pinned warning line). ⚠️ Name
+     stability caveat: the key depends on which source produced the entry, so
+     an offline best-effort run can yield a different name than an online S2
+     run — and since clobber only overwrites same-named files, `OUT/` can
+     accumulate both. The INFO line makes this diagnosable.
+  3. **Source-derived fallback**: for `run`, the PDF filename **stem**
+     (`Path(...).stem`) or the domain handler's `file_name(url)`; for
+     `describe`, `manifest.source.name` (no PDF present, §8.5).
+  Because BibTeX runs at describe time, the **`ocr` bundle** can only get an
+  explicit `--name` or the source-derived name — never a citation key (§8.5).
+- Names are sanitized (`sanitize_base_name`: dots/spaces → `_`); the `_part`
+  suffix on every document output does the rest of the collision avoidance.
+- `{base}_full.md` is the **full** document (the enhanced, stitched markdown).
+  After hand-editing the splits, `inscriber join OUT/{base}` regenerates it
+  from them (in the §11 allparts form).
 - **Two distinct `figures/` dirs:** the **bundle** always has one (crops are made
   at `ocr` time, before `mode` is chosen — §8.5); the **output** dir gets one only
   when `figure.mode = describe-and-keep` (the only mode that references crops),
@@ -2330,9 +2373,10 @@ guarantees blank lines around the block, and the `<center>…</center>` caption 
 is a protected artifact line for the header/footer stripper (§10.3b).
 
 **7. Assemble / split / write (§10–§14).** Pages concatenated → cleanup → split →
-`paper.md` (full), `paper.main.md` / `paper.appendix.md` / `paper.backmatter.md`
-as detected, `figures/fig_p3_1.png`, and `paper.bib` when BibTeX produced an
-entry (default `auto`, §12).
+`{base}_full.md`, `{base}_main.md` / `{base}_appendix.md` /
+`{base}_backmatter.md` as detected, `figures/fig_p3_1.png`, and `{base}.bib`
+when BibTeX produced an entry (default `auto`, §12 — whose citation key is
+then also the default `{base}`, §14).
 
 ---
 

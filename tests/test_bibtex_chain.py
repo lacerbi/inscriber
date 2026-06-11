@@ -420,9 +420,11 @@ def test_run_with_arxiv_url_probes_but_prefers_s2_by_id(
     # The probe always runs (its metadata backs best-effort if online sources
     # fail at lookup time), but the by-ID source still wins the chain.
     assert len(probe_calls) == 1
-    bib = out / "arxiv-2510_18234v2.bib"
+    # the entry's citation key names the outputs (name_from_bibtex default):
+    bib = out / "vaswani2017attention.bib"
     assert str(bib) in written
     assert bib.read_text(encoding="utf-8").startswith("@article{vaswani2017attention,")
+    assert (out / "vaswani2017attention_full.md").is_file()
 
 
 def test_run_provenance_with_rate_limited_s2_falls_back_to_best_effort(
@@ -454,7 +456,9 @@ def test_run_provenance_with_rate_limited_s2_falls_back_to_best_effort(
     written = pipeline.run(cfg)
 
     assert len(probe_calls) == 1  # probed despite recognized provenance
-    bib = out / "openreview-G4I23g5Ugh.bib"
+    # best-effort entries are real entries: their key names the outputs too
+    # (probe metadata: Ada B / 2026 / "A Sample Paper" → b2026sample).
+    bib = out / "b2026sample.bib"
     assert str(bib) in written
     content = bib.read_text(encoding="utf-8")
     assert content.startswith("% NOTE: Best-effort entry")
@@ -484,7 +488,7 @@ def test_describe_reads_provenance_from_bundle(tmp_path, monkeypatch, hermetic_c
     # One probe call (describe always probes in auto mode); the @article below
     # proves the chain got the arXiv URL from the bundle manifest's provenance.
     assert len(probe_calls) == 1
-    bib = out / "arxiv-paper.bib"
+    bib = out / "vaswani2017attention.bib"
     assert str(bib) in written
     assert "@article{vaswani2017attention," in bib.read_text(encoding="utf-8")
 
@@ -501,7 +505,7 @@ def test_run_and_describe_share_probe_cache_and_bib(tmp_path, monkeypatch, herme
     cfg.net.offline = True  # local file + offline → probe + best-effort only
     pipeline.run(cfg)
     assert len(probe_calls) == 1
-    bib_run = (out_run / "sample_paper.bib").read_text(encoding="utf-8")
+    bib_run = (out_run / "lovelace2017attention.bib").read_text(encoding="utf-8")
     assert bib_run.startswith("% NOTE: Best-effort entry")
 
     out_desc = tmp_path / "out-desc"
@@ -512,7 +516,7 @@ def test_run_and_describe_share_probe_cache_and_bib(tmp_path, monkeypatch, herme
     pipeline.describe(dcfg)
 
     assert len(probe_calls) == 1  # describe served from the shared probe cache
-    bib_desc = (out_desc / "sample_paper.bib").read_text(encoding="utf-8")
+    bib_desc = (out_desc / "lovelace2017attention.bib").read_text(encoding="utf-8")
     assert bib_desc == bib_run
 
 
@@ -533,8 +537,11 @@ def test_auto_append_to_document_prepends_fenced_entry(tmp_path, monkeypatch, he
     cfg = _auto_cfg(tmp_path, out)
     cfg.net.offline = True
     cfg.bibtex.append_to_document = True
+    # The probe metadata has no year, so the citation key would embed the
+    # current year (clock-dependent name) — pin the source-derived name.
+    cfg.output.name_from_bibtex = False
     pipeline.run(cfg)
-    full = (out / "sample_paper.md").read_text(encoding="utf-8")
+    full = (out / "sample_paper_full.md").read_text(encoding="utf-8")
     # auto entries get the same prepended, fenced, ----separated injection as on-mode:
     assert full.startswith("```\n% NOTE: Best-effort entry")
     assert "\n```\n\n---\n\n" in full
@@ -552,5 +559,5 @@ def test_bibtex_failure_never_fails_the_run(tmp_path, monkeypatch, hermetic_cach
     cfg = _auto_cfg(tmp_path, out)
     cfg.net.offline = True
     written = pipeline.run(cfg)  # must not raise
-    assert (out / "sample_paper.md").is_file()
+    assert (out / "sample_paper_full.md").is_file()
     assert all(not w.endswith(".bib") for w in written)

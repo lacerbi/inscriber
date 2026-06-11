@@ -256,6 +256,12 @@ def validate_structural(cfg: RunConfig) -> None:
         )
     if not isinstance(cfg.table.refine, bool):
         errors.append(f"table.refine must be a boolean (got {cfg.table.refine!r})")
+    if not isinstance(cfg.output.name, str):
+        errors.append(f"output.name must be a string (got {cfg.output.name!r})")
+    if not isinstance(cfg.output.name_from_bibtex, bool):
+        errors.append(
+            f"output.name_from_bibtex must be a boolean (got {cfg.output.name_from_bibtex!r})"
+        )
 
     if errors:
         raise ConfigError("Invalid configuration:\n  - " + "\n  - ".join(errors))

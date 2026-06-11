@@ -62,8 +62,11 @@ session) → stitch/clean → split (main/appendix/backmatter) → BibTeX (defau
 - **Four subcommands**: `run` (end-to-end), `ocr` (writes a portable _bundle_:
   `manifest.json` + `figures/` crops + `pages/` rasters for table pages),
   `describe` (bundle → VLM + assembly, no OCR model), and `join` (rejoin
-  possibly hand-edited `{base}.main/.appendix/.backmatter.md` splits into
-  `{base}.md` — the §11 allparts form; pure text, no models/config needed).
+  possibly hand-edited `{base}_main/_appendix/_backmatter.md` splits into
+  `{base}_full.md` — the §11 allparts form; pure text, no models/config
+  needed). Output base name (DESIGN §14): explicit `--name` > the BibTeX
+  citation key (`name_from_bibtex`, default on; e.g. `chang2025amortized`) >
+  source-derived.
   `run` = `ocr` + `describe` sharing in-memory objects. The bundle's
   `bundle_schema` int is the compatibility gate; new manifest fields must be
   additive or bump it.

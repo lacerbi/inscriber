@@ -113,16 +113,25 @@ inscriber https://arxiv.org/abs/2510.18234 -o out/   # paper-repository URL
 URL input supports arXiv, OpenReview, ACL Anthology, bioRxiv, medRxiv,
 NeurIPS, and PMLR; for anything else, download the PDF and pass the local path.
 
-Outputs in `out/`:
+Outputs in `out/` (here for a paper whose BibTeX citation key is
+`chang2025amortized`):
 
 ```
-paper.md                # full document
-paper.main.md           # split parts (as detected)
-paper.appendix.md
-paper.backmatter.md
-paper.bib               # when judged citable (default; --bibtex-mode off disables)
-figures/                # with --figure-mode describe-and-keep
+chang2025amortized_full.md        # full document
+chang2025amortized_main.md        # split parts (as detected)
+chang2025amortized_appendix.md
+chang2025amortized_backmatter.md
+chang2025amortized.bib            # when judged citable (--bibtex-mode off disables)
+figures/                          # with --figure-mode describe-and-keep
 ```
+
+**Naming:** when a BibTeX entry is produced (the default `auto` mode does this
+for any citable paper), its citation key — `authorYEARfirstword`, e.g.
+`chang2025amortized` — becomes the base name, giving you library-style
+filenames for free. Otherwise the name derives from the source (PDF stem or
+repository filename). `--name NAME` pins an explicit base name;
+`--no-bibtex-name` disables key-derived naming. Every run logs which name was
+chosen.
 
 ### Two-step: compare VLMs on identical OCR
 
@@ -144,14 +153,14 @@ edit the **split** files and rebuild the full document from them — no models
 needed:
 
 ```bash
-inscriber join out/paper      # paper.main/.appendix/.backmatter.md → paper.md
+inscriber join out/paper      # paper_main/_appendix/_backmatter.md → paper_full.md
 ```
 
 `join` strips each split's footer notice (and the BibTeX block, if injected),
 concatenates main → appendix → backmatter, and re-applies the framing — so each
-fix is made once, not once per file. Note the regenerated `paper.md` uses the
-combined ordering (appendix before backmatter, under `# Title - Appendix`-style
-headings), which may differ from the original document order.
+fix is made once, not once per file. Note the regenerated `{base}_full.md` uses
+the combined ordering (appendix before backmatter, under `# Title - Appendix`-
+style headings), which may differ from the original document order.
 
 ### Convert + verify with Claude Code
 
@@ -176,6 +185,7 @@ has a matching flag. Highlights:
 | `--figure-mode {describe-only,describe-and-keep,placeholder}` | how figures render                                            |
 | `--no-figures`                                                | skip figure detection and description entirely                |
 | `--no-table-refine`                                           | keep raw OCR tables (skip VLM restructuring)                  |
+| `--name NAME` / `--no-bibtex-name`                            | explicit output base name / never name by BibTeX citation key |
 | `--no-split` / `--page-numbers` / `--page-separators`         | output options                                                |
 | `--pages RANGE`                                               | page selection, e.g. `"1-10"`, `"3"`, `"5-"`                  |
 | `--bibtex-mode {off,on,auto}` / `--bibtex-in-doc`             | BibTeX mode (default `auto`; `--bibtex` ⇒ `on`)               |

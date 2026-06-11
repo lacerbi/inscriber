@@ -1,16 +1,16 @@
 """Rejoin split files into a full document (DESIGN §11 — the allparts form).
 
-``inscriber join`` reads ``{base}.main.md`` (+ ``.appendix.md`` /
-``.backmatter.md`` when present) — typically after the user hand-edited them —
-and regenerates ``{base}.md``. The standalone split files already carry the
-allparts framing (``# {title} - Appendix`` + ``---``, §11), so joining is:
+``inscriber join`` reads ``{base}_main.md`` (+ ``_appendix.md`` /
+``_backmatter.md`` when present) — typically after the user hand-edited them —
+and regenerates ``{base}_full.md``. The standalone split files already carry
+the allparts framing (``# {title} - Appendix`` + ``---``, §11), so joining is:
 strip each file's per-file extras (the transcription notice footer; main's
 optional prepended BibTeX block), concatenate in the deliberate
 **main → appendix → backmatter** order, then re-apply the BibTeX block and one
 regenerated notice to the joined document.
 
 Note the joined document is the *allparts* form: appendix precedes backmatter
-under derived headings, which differs from ``run``'s original ``{base}.md``
+under derived headings, which differs from ``run``'s original ``{base}_full.md``
 (source order, original headings). Rejoining from splits cannot recover the
 source order — this is the paper2llm-faithful combined shape, not a bug.
 """
@@ -23,7 +23,7 @@ from pathlib import Path
 from inscriber.errors import InscriberError
 from inscriber.postprocess.notice import append_transcription_notice
 
-MAIN_SUFFIX = ".main.md"
+MAIN_SUFFIX = "_main.md"
 
 # The exact shapes the pipeline writes (pipeline._write_outputs):
 #   notice  = rstrip() + "\n\n---\n\n" + "*Transcribed with …*" + "\n"
@@ -41,10 +41,10 @@ class JoinError(InscriberError):
 
 
 def resolve_join_input(path: Path) -> Path:
-    """Resolve the ``join`` BASE argument to the ``{base}.main.md`` file.
+    """Resolve the ``join`` BASE argument to the ``{base}_main.md`` file.
 
     Accepts the main split file itself, a base path (``out/paper`` →
-    ``out/paper.main.md``), or a directory containing exactly one ``*.main.md``.
+    ``out/paper_main.md``), or a directory containing exactly one ``*_main.md``.
     """
     if path.is_dir():
         candidates = sorted(path.glob(f"*{MAIN_SUFFIX}"))
@@ -54,7 +54,7 @@ def resolve_join_input(path: Path) -> Path:
             names = ", ".join(c.name for c in candidates)
             raise JoinError(
                 f"multiple *{MAIN_SUFFIX} files in {path} ({names}); "
-                f"pass the base path or the .main.md file itself"
+                f"pass the base path or the _main.md file itself"
             )
         return candidates[0]
     if path.name.endswith(MAIN_SUFFIX):
@@ -81,7 +81,7 @@ def _read_split(path: Path) -> tuple[str, bool, bool]:
 
 
 def join_split_files(main_path: Path) -> str:
-    """Join ``{base}.main/.appendix/.backmatter.md`` into the full document."""
+    """Join ``{base}_main/_appendix/_backmatter.md`` into the full document."""
     base = main_path.name[: -len(MAIN_SUFFIX)]
     main_body, had_notice, vlm = _read_split(main_path)
 
@@ -94,7 +94,7 @@ def join_split_files(main_path: Path) -> str:
     # Deliberate allparts order (§11): main → appendix → backmatter.
     parts = [main_body] if main_body else []
     for section in ("appendix", "backmatter"):
-        section_path = main_path.with_name(f"{base}.{section}.md")
+        section_path = main_path.with_name(f"{base}_{section}.md")
         if section_path.is_file():
             body, notice, section_vlm = _read_split(section_path)
             had_notice = had_notice or notice

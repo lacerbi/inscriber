@@ -16,6 +16,7 @@ main/appendix/backmatter split set is delivered in M3.
 
 from __future__ import annotations
 
+import re
 import shutil
 import tempfile
 from contextlib import ExitStack, contextmanager
@@ -793,55 +794,115 @@ def _assemble(cfg: RunConfig, pages: list[_Page], descriptions: dict[str, str]) 
     return combined.strip() + "\n"
 
 
-def _bibtex_outputs(
+def _bibtex_entry(
     cfg: RunConfig,
     full_md: str,
-    out_dir: Path,
-    base: str,
     *,
     probe: ProbeResult | None = None,
     original_url: str | None = None,
-) -> tuple[str | None, list[str]]:
-    """Produce + write ``{base}.bib`` (and optionally a fenced block to prepend
-    into the document) per ``bibtex.mode`` (DESIGN §12). Never fails the run.
+) -> tuple[str | None, str]:
+    """Produce the BibTeX entry per ``bibtex.mode`` (DESIGN §12) — no writing.
 
+    Writing happens in :func:`_finalize_outputs`, after the entry has had its
+    say in output-base-name resolution (DESIGN §14). Never fails the run.
     ``on`` is the frozen paper2llm-parity path (title search + mock fallback,
     network required). ``auto`` walks the citability → source chain with
     ``probe`` and ``original_url`` (provenance), degrading gracefully.
     """
     if cfg.bibtex.mode == "off":
-        return None, []
+        return None, ""
     source = ""
     try:
         if cfg.bibtex.mode == "on":
             if cfg.net.offline:
                 logger.warning("--offline: skipping BibTeX (requires network)")
-                return None, []
+                return None, ""
             title = extract_title(full_md)
             logger.info("fetching BibTeX for: %s", title)
-            bibtex = generate_bibtex(title)
-        else:  # auto: citability → source chain
-            bibtex, source = generate_bibtex_auto(
-                probe,
-                original_url=original_url,
-                online_allowed=not cfg.net.offline,
-                fallback_title=extract_title(full_md),
-            )
-            if bibtex is None:
-                if source == "not-citable":
-                    logger.info("BibTeX (auto): document judged not citable; skipping")
-                else:
-                    logger.info("BibTeX (auto): skipped: %s", source)
-                return None, []
+            return generate_bibtex(title), source
+        # auto: citability → source chain
+        bibtex, source = generate_bibtex_auto(
+            probe,
+            original_url=original_url,
+            online_allowed=not cfg.net.offline,
+            fallback_title=extract_title(full_md),
+        )
+        if bibtex is None:
+            if source == "not-citable":
+                logger.info("BibTeX (auto): document judged not citable; skipping")
+            else:
+                logger.info("BibTeX (auto): skipped: %s", source)
+            return None, ""
+        return bibtex, source
     except Exception as e:  # noqa: BLE001 - resilience (DESIGN §16): e.g. a
         # malformed-but-HTTP-200 API body; BibTeX never fails the run.
         logger.warning("BibTeX generation failed: %s; skipping", e)
-        return None, []
-    bib_path = write_text_file(out_dir / f"{base}.bib", bibtex + "\n", clobber=cfg.output.clobber)
-    if cfg.bibtex.mode == "auto":
-        logger.info("BibTeX (auto): wrote entry via %s", source)
-    block = f"```\n{bibtex}\n```\n\n---\n\n" if cfg.bibtex.append_to_document else None
-    return block, [str(bib_path)]
+        return None, ""
+
+
+_CITATION_KEY_RE = re.compile(r"@\w+\{([^,\s{}]+),")
+_MOCK_MARKER = "% WARNING: This is a fallback mock citation."
+
+
+def _citation_key(bibtex: str | None) -> str | None:
+    """Extract the citation key from an entry, or ``None`` if unusable.
+
+    The ``on``-mode fallback mock (key ``unknownYear``) must never name files —
+    it is detected by its pinned warning line (DESIGN §12.2).
+    """
+    if not bibtex or _MOCK_MARKER in bibtex:
+        return None
+    m = _CITATION_KEY_RE.search(bibtex)
+    return m.group(1) if m else None
+
+
+def _resolve_output_base(cfg: RunConfig, fallback_base: str, bibtex: str | None) -> str:
+    """Resolve the output base name (DESIGN §14): explicit ``output.name`` >
+    BibTeX citation key (``name_from_bibtex``) > the source-derived fallback.
+    Always logs which name won, so the naming decision is visible.
+    """
+    if cfg.output.name:
+        base = sanitize_base_name(cfg.output.name)
+        logger.info("output base name: %s (explicit --name)", base)
+        return base
+    if cfg.output.name_from_bibtex:
+        key = _citation_key(bibtex)
+        if key:
+            base = sanitize_base_name(key)
+            logger.info("output base name: %s (BibTeX citation key)", base)
+            return base
+    logger.info("output base name: %s (from source)", fallback_base)
+    return fallback_base
+
+
+def _finalize_outputs(
+    cfg: RunConfig,
+    fallback_base: str,
+    full_md: str,
+    out_dir: Path,
+    *,
+    probe: ProbeResult | None,
+    original_url: str | None,
+    vlm_tables: bool,
+) -> list[str]:
+    """BibTeX entry → output base name → write documents + ``{base}.bib``."""
+    bibtex, source = _bibtex_entry(cfg, full_md, probe=probe, original_url=original_url)
+    base = _resolve_output_base(cfg, fallback_base, bibtex)
+    bibtex_block: str | None = None
+    bib_written: list[str] = []
+    if bibtex is not None:
+        bib_path = write_text_file(
+            out_dir / f"{base}.bib", bibtex + "\n", clobber=cfg.output.clobber
+        )
+        if cfg.bibtex.mode == "auto":
+            logger.info("BibTeX (auto): wrote entry via %s", source)
+        if cfg.bibtex.append_to_document:
+            bibtex_block = f"```\n{bibtex}\n```\n\n---\n\n"
+        bib_written = [str(bib_path)]
+    written = _write_documents(
+        cfg, base, full_md, out_dir, bibtex_block=bibtex_block, vlm_tables=vlm_tables
+    )
+    return written + bib_written
 
 
 def _write_documents(
@@ -903,7 +964,9 @@ def _ocr_meta(cfg: RunConfig, backend, model_id: str, mmproj_id: str, server_id:
 def run_ocr(cfg: RunConfig) -> list[str]:
     """OCR-only: produce an inspectable OCR bundle (DESIGN §3.1, §8.5)."""
     resolved = resolve_input(cfg.input, offline=cfg.net.offline)
-    base = sanitize_base_name(resolved.suggested_name)
+    # Explicit --name only: no BibTeX exists at ocr time, so the bundle never
+    # gets a citation-key name (DESIGN §14) — describe's outputs still can.
+    base = sanitize_base_name(cfg.output.name or resolved.suggested_name)
     out_dir = Path(cfg.output.dir)
     bdir = bundle_dir_for(out_dir, base)
     figures_dir = bdir / "figures"
@@ -985,14 +1048,11 @@ def describe(cfg: RunConfig) -> list[str]:
         finally:
             session.close()
         full_md = _assemble(cfg, pages, descriptions)
-        bibtex_block, bib_written = _bibtex_outputs(
-            cfg, full_md, out_dir, base, probe=probe, original_url=bundle.original_url
-        )
-        written = _write_documents(
+        written = _finalize_outputs(
             cfg, base, full_md, out_dir,
-            bibtex_block=bibtex_block, vlm_tables=tables_refined > 0,
+            probe=probe, original_url=bundle.original_url,
+            vlm_tables=tables_refined > 0,
         )
-        written += bib_written
         if cfg.figure.mode == "describe-and-keep" and cfg.figure.detect != "none":
             all_figs = [f for pg in pages for f in pg.figures]
             written += [str(p) for p in copy_figures(
@@ -1021,14 +1081,11 @@ def _run_body(cfg: RunConfig, resolved, base, out_dir, work, *, vlm_endpoint=Non
     finally:
         session.close()
     full_md = _assemble(cfg, working, descriptions)
-    bibtex_block, bib_written = _bibtex_outputs(
-        cfg, full_md, out_dir, base, probe=probe, original_url=resolved.original_url
-    )
-    written = _write_documents(
+    written = _finalize_outputs(
         cfg, base, full_md, out_dir,
-        bibtex_block=bibtex_block, vlm_tables=tables_refined > 0,
+        probe=probe, original_url=resolved.original_url,
+        vlm_tables=tables_refined > 0,
     )
-    written += bib_written
     if cfg.figure.mode == "describe-and-keep" and cfg.figure.detect != "none":
         all_figs = [f for pg in working for f in pg.figures]
         written += [str(p) for p in copy_figures(
@@ -1089,16 +1146,16 @@ def run(cfg: RunConfig) -> list[str]:
 
 
 def join_splits(cfg: RunConfig) -> list[str]:
-    """Rejoin split files into ``{base}.md`` (DESIGN §11 — the allparts form).
+    """Rejoin split files into ``{base}_full.md`` (DESIGN §11 — allparts form).
 
     No models, servers, or PDF involved — a pure text reassembly, written next
-    to the splits. ``cfg.input`` is the BASE argument (base path, ``.main.md``
+    to the splits. ``cfg.input`` is the BASE argument (base path, ``_main.md``
     file, or directory); ``cfg.output.clobber`` governs overwriting.
     """
     main_path = resolve_join_input(Path(cfg.input).expanduser())
     content = join_split_files(main_path)
-    base = main_path.name[: -len(".main.md")]
+    base = main_path.name[: -len("_main.md")]
     out_path = write_text_file(
-        main_path.with_name(f"{base}.md"), content, clobber=cfg.output.clobber
+        main_path.with_name(f"{base}_full.md"), content, clobber=cfg.output.clobber
     )
     return [str(out_path)]

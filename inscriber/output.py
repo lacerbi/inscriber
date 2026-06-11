@@ -24,8 +24,11 @@ class OutputError(InscriberError):
 
 
 def sanitize_base_name(name: str) -> str:
-    """Sanitize a base name so e.g. ``paper.main`` can't collide with the
-    ``paper.main.md`` split output (DESIGN §14) — dots/spaces/etc → ``_``.
+    """Sanitize a base name for use in output filenames (DESIGN §14) —
+    dots/spaces/etc → ``_``. Every document output carries a ``_part`` suffix
+    (``_full``/``_main``/…), which is what keeps pathological source names
+    (e.g. a PDF literally named ``paper_main.pdf``) from colliding with
+    another document's outputs.
     """
     cleaned = re.sub(r"[^\w\-]+", "_", name).strip("_")
     return cleaned or "paper"
@@ -73,9 +76,9 @@ def copy_figures(
 def write_full_document(
     out_dir: Path, base_name: str, markdown: str, *, clobber: bool
 ) -> Path:
-    """Write ``{base}.md`` — the full stitched document (DESIGN §14)."""
+    """Write ``{base}_full.md`` — the full stitched document (DESIGN §14)."""
     out_dir = Path(out_dir)
-    return write_text_file(out_dir / f"{base_name}.md", markdown, clobber=clobber)
+    return write_text_file(out_dir / f"{base_name}_full.md", markdown, clobber=clobber)
 
 
 def write_split_documents(
@@ -87,15 +90,15 @@ def write_split_documents(
     backmatter: str | None,
     clobber: bool,
 ) -> list[Path]:
-    """Write ``{base}.main.md`` and, when present, ``.appendix.md`` / ``.backmatter.md``."""
+    """Write ``{base}_main.md`` and, when present, ``_appendix.md`` / ``_backmatter.md``."""
     out_dir = Path(out_dir)
-    written = [write_text_file(out_dir / f"{base_name}.main.md", main, clobber=clobber)]
+    written = [write_text_file(out_dir / f"{base_name}_main.md", main, clobber=clobber)]
     if appendix is not None:
         written.append(
-            write_text_file(out_dir / f"{base_name}.appendix.md", appendix, clobber=clobber)
+            write_text_file(out_dir / f"{base_name}_appendix.md", appendix, clobber=clobber)
         )
     if backmatter is not None:
         written.append(
-            write_text_file(out_dir / f"{base_name}.backmatter.md", backmatter, clobber=clobber)
+            write_text_file(out_dir / f"{base_name}_backmatter.md", backmatter, clobber=clobber)
         )
     return written

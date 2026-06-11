@@ -14,7 +14,8 @@ from inscriber.output import (
 
 
 def test_sanitize_base_name_avoids_collision():
-    # "paper.main" must not be able to collide with the "paper.main.md" split output.
+    # Dots/spaces become underscores; the _full/_main/... output suffixes do the
+    # rest of the collision avoidance (DESIGN §14).
     assert sanitize_base_name("paper.main") == "paper_main"
     assert sanitize_base_name("My Paper (v2)") == "My_Paper_v2"
     assert sanitize_base_name("") == "paper"

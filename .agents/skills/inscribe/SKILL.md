@@ -1,14 +1,13 @@
 ---
 name: inscribe
 description: Convert an academic PDF (local path or paper-repository URL) to Markdown with the inscriber CLI, then verify the transcription against the source PDF with parallel subagents and apply the important fixes. Use when the user asks to inscribe, convert, or transcribe a paper or PDF.
-argument-hint: <pdf-path-or-url> [options, e.g. "pages 1-10", "no verification"]
 ---
 
 # Inscribe a paper (convert + verify)
 
-`$ARGUMENTS` holds the input (PDF path or URL) plus options, stated either as
-inscriber flags or in plain words. The pipeline: run `inscriber`, then — unless
-the user said to skip it — verify the output against the source PDF with
+The user's request holds the input (PDF path or URL) plus options, stated either
+as inscriber flags or in plain words. The pipeline: run `inscriber`, then —
+unless the user said to skip it — verify the output against the source PDF with
 subagents and apply the fixes that matter.
 
 ## 1. Read the docs first
@@ -26,9 +25,11 @@ error verbatim and stop.
   from the repo root.
 - Default output dir `out/` unless the user gave one:
   `… -m inscriber run <INPUT> -o out/ [flags]`
-- OCR + VLM on real hardware takes minutes: run it **in the background** and
-  monitor. Watch stderr for warnings — especially `truncated` page warnings
-  (note the page numbers; they get extra scrutiny in step 4).
+- OCR + VLM on real hardware takes minutes: run it with a long timeout or as a
+  hidden background process with stdout/stderr logs, then monitor it to
+  completion. Watch stderr for warnings — especially `truncated` page warnings
+  (note the page numbers; they get extra scrutiny in step 4). Do not finish
+  while an `inscriber` process needed for the request is still running.
 - On success it prints the written files to stdout: the full `<base>_full.md`,
   splits (`<base>_main/_appendix/_backmatter.md` unless `--no-split`),
   `<base>.bib`, `figures/`. Take `<base>` from that printed list, not from the
@@ -51,19 +52,25 @@ used `--pages`, only those pages exist in the output — verify only those.
 
 ## 4. Verification (default ON — skip only if the user said so)
 
-Partition the processed pages into chunks of **at most 10 pages**. For each
-chunk spawn a **Sonnet** subagent (`model: sonnet`); launch chunks in
-parallel, in multiple rounds if the paper is long. Each subagent prompt must
-contain, explicitly:
+Partition the processed pages into chunks of **at most 10 pages**. If the user
+has explicitly requested or confirmed subagents/parallel verification, spawn a
+`worker` subagent for each chunk and launch chunks in parallel, in multiple
+rounds if the paper is long. Omit the model override by default; for mechanical
+chunk checks where a cheaper model is appropriate, use `gpt-5.4-mini`. If the
+user has not explicitly authorized subagents, ask once before spawning them.
+Each subagent prompt must contain, explicitly:
 
-1. The absolute PDF path and its page range (`Read` the PDF with
-   `pages: "X-Y"`).
+1. The absolute PDF path and its page range. Tell the subagent to inspect only
+   that range, using local PDF tools such as PyMuPDF rendering/extraction from
+   the repo venv when needed.
 2. The absolute paths of the Markdown outputs to check (the split files when
    they exist, else `<base>_full.md`) and a note that there are no page markers —
    locate the chunk's content by matching headings/text.
 3. Any pages flagged `truncated` in its range (these likely end in a
    repetition loop with content missing after it).
-4. **The typical failure modes, in priority order — paste this list into the
+4. A note that the subagent is not alone in the codebase and must be read-only:
+   do not edit files, revert changes, delete outputs, or modify caches.
+5. **The typical failure modes, in priority order — paste this list into the
    subagent prompt:**
    - **Tables (highest risk — check every numeric cell).** Header misreads
      where subscripts get mangled (`q_mild`/`q_strong`/`q_mixture` → `q&out`);
@@ -88,7 +95,7 @@ contain, explicitly:
      stripping can overreach), bad de-hyphenation joins, and missing or
      duplicated content at the main/appendix/backmatter split boundaries.
    - **References.** Garbled author names, years, venues.
-5. The report format: **read-only — do not edit any file.** Return only
+6. The report format: **read-only — do not edit any file.** Return only
    important fixes (wrong values, wrong symbols, missing/garbled content —
    not style), each as: target file · nearest heading · exact current text
    (quoted, long enough to be a unique match) · corrected text · severity

@@ -186,7 +186,7 @@ def test_truncated_page_warns_and_is_cached_flagged(
     assert "likely a repetition loop" in caplog.text
     assert "after 8192 tokens" in caplog.text
     # The best-effort parse still reaches the output…
-    text = (out / "sample_paper.md").read_text(encoding="utf-8")
+    text = (out / "sample_paper_full.md").read_text(encoding="utf-8")
     assert "The page text before the loop." in text
     # …and the page IS cached, marked truncated (DESIGN §8.6).
     entries = _ocr_cache_entries(tmp_path)
@@ -213,7 +213,7 @@ def test_truncated_cache_hit_rewarns_without_recompute(
     assert "truncated when OCR'd" in caplog.text
     assert "likely a repetition loop" in caplog.text
     # The flagged cached page still reaches the document output.
-    text = (out / "sample_paper.md").read_text(encoding="utf-8")
+    text = (out / "sample_paper_full.md").read_text(encoding="utf-8")
     assert "The page text before the loop." in text
 
 

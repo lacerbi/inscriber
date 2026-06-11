@@ -206,6 +206,11 @@ class TableConfig:
 @dataclass
 class OutputConfig:
     dir: str = "."
+    # Output base-name resolution (DESIGN §14): explicit ``name`` > the BibTeX
+    # citation key (when ``name_from_bibtex`` and an entry was produced) > the
+    # source-derived name (PDF stem / domain-handler filename / bundle name).
+    name: str = ""  # "" = no explicit override
+    name_from_bibtex: bool = True  # use the citation key (e.g. chang2025amortized)
     split: bool = True
     page_numbers: bool = False
     page_separators: bool = False
