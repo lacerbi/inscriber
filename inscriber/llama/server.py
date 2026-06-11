@@ -9,13 +9,19 @@ Cross-platform notes (DESIGN §5.3, §15):
 * list-args only, never ``shell=True``;
 * binary discovery appends ``.exe`` on Windows (via :func:`config.find_binary`);
 * ``Popen.terminate()`` maps to ``TerminateProcess`` (Windows) / ``SIGTERM``
-  (POSIX) — both fine; we avoid POSIX-only ``os.killpg`` / ``preexec_fn``.
+  (POSIX) — both fine; we avoid POSIX-only ``os.killpg`` / ``preexec_fn``;
+* orphan backstop = ``atexit`` **plus** ``SIGTERM``/``SIGHUP`` handlers — the
+  POSIX signals bypass ``atexit``, so without the handlers a ``kill`` / logout /
+  supervisor stop would leave the spawned llama-server running (``SIGHUP`` is
+  absent on Windows and skipped there).
 """
 
 from __future__ import annotations
 
 import atexit
+import os
 import re
+import signal
 import socket
 import subprocess
 import tempfile
@@ -35,10 +41,11 @@ from inscriber.logging import get_logger
 logger = get_logger()
 
 # Module-level backstop: any server we spawn is tracked here and terminated on
-# interpreter exit, so a crash / hard exit never orphans a llama-server.
+# interpreter exit OR a terminating signal, so a crash / hard exit / `kill`
+# never orphans a (GPU-resident, multi-GB) llama-server.
 _ACTIVE: set[subprocess.Popen] = set()
 _ACTIVE_LOCK = threading.Lock()
-_ATEXIT_REGISTERED = False
+_CLEANUP_REGISTERED = False
 
 
 class ServerError(InscriberError):
@@ -63,14 +70,41 @@ class ServerSpec:
     label: str = "llama"  # for log file naming / messages
 
 
-def _register_atexit() -> None:
-    global _ATEXIT_REGISTERED
-    if not _ATEXIT_REGISTERED:
-        atexit.register(_terminate_all)
-        _ATEXIT_REGISTERED = True
+def _on_terminate_signal(signum, frame):  # pragma: no cover - kills the process
+    """Terminate tracked servers, then re-deliver the signal with the default
+    disposition so the process exits with the standard killed-by-signal status."""
+    _terminate_all()
+    signal.signal(signum, signal.SIG_DFL)
+    os.kill(os.getpid(), signum)
 
 
-def _terminate_all() -> None:  # pragma: no cover - exercised only on process exit
+def _register_cleanup() -> None:
+    """Register the orphan backstops once (DESIGN §5.3).
+
+    ``atexit`` covers normal exit and Ctrl-C (KeyboardInterrupt unwinds, then
+    atexit runs). POSIX ``SIGTERM``/``SIGHUP`` **bypass** atexit — their default
+    disposition kills the interpreter without cleanup — so handlers are
+    installed for them too (``SIGHUP`` does not exist on Windows; ``getattr``
+    skips it). A handler someone else installed is left alone, and installation
+    is skipped quietly off the main thread (``signal.signal`` raises there).
+    """
+    global _CLEANUP_REGISTERED
+    if _CLEANUP_REGISTERED:
+        return
+    _CLEANUP_REGISTERED = True
+    atexit.register(_terminate_all)
+    for sig_name in ("SIGTERM", "SIGHUP"):
+        sig = getattr(signal, sig_name, None)
+        if sig is None:
+            continue
+        try:
+            if signal.getsignal(sig) == signal.SIG_DFL:
+                signal.signal(sig, _on_terminate_signal)
+        except (ValueError, OSError):  # pragma: no cover - non-main thread
+            pass
+
+
+def _terminate_all() -> None:
     with _ACTIVE_LOCK:
         procs = list(_ACTIVE)
     for proc in procs:
@@ -214,7 +248,7 @@ def _terminate(proc: subprocess.Popen, grace: float = 10.0) -> None:
 
 
 def _track(proc: subprocess.Popen) -> None:
-    _register_atexit()
+    _register_cleanup()
     with _ACTIVE_LOCK:
         _ACTIVE.add(proc)
 

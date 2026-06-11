@@ -21,6 +21,10 @@ logger = get_logger()
 PDF_MAGIC = b"%PDF"
 USER_AGENT = "inscriber/0.1 (+https://github.com/lacerbi/inscriber)"
 DOWNLOAD_TIMEOUT = 60.0
+# Hard cap on a downloaded "PDF" (DESIGN §6). The body is buffered in memory
+# (PyMuPDF consumes bytes), so an unbounded body on a hostile or misconfigured
+# URL must not be able to exhaust RAM. Generously above any real academic PDF.
+MAX_DOWNLOAD_BYTES = 512 * 1024 * 1024
 
 
 class InputError(InscriberError):
@@ -53,25 +57,56 @@ def resolve_local_pdf(path_str: str) -> ResolvedInput:
     )
 
 
-def _download_pdf(pdf_url: str) -> bytes:
-    """Download with redirects, a timeout, and a descriptive User-Agent (DESIGN §6)."""
+def _too_large_error(pdf_url: str, size_note: str) -> InputError:
+    limit_mib = MAX_DOWNLOAD_BYTES // (1024 * 1024)
+    return InputError(
+        f"download of {pdf_url} {size_note} the {limit_mib} MiB limit; "
+        "if it is a real PDF, download it manually and pass the local path"
+    )
+
+
+def _download_pdf(pdf_url: str, *, transport: httpx.BaseTransport | None = None) -> bytes:
+    """Download with redirects, a timeout, and a descriptive User-Agent (DESIGN §6).
+
+    The body is **streamed** with a hard size cap (:data:`MAX_DOWNLOAD_BYTES`)
+    and the ``%PDF`` magic is checked on the first bytes, so a non-PDF or
+    oversized body aborts early instead of being buffered whole into memory.
+    ``transport`` is the test seam (cf. ``setup.py``).
+    """
+    buf = bytearray()
+    magic_checked = False
     try:
         with httpx.Client(
             follow_redirects=True,
             timeout=DOWNLOAD_TIMEOUT,
             headers={"User-Agent": USER_AGENT},
+            transport=transport,
         ) as client:
-            resp = client.get(pdf_url)
+            with client.stream("GET", pdf_url) as resp:
+                if resp.status_code != 200:
+                    raise InputError(
+                        f"download of {pdf_url} returned HTTP {resp.status_code}"
+                    )
+                declared = resp.headers.get("Content-Length", "")
+                if declared.isdigit() and int(declared) > MAX_DOWNLOAD_BYTES:
+                    raise _too_large_error(pdf_url, f"declares {declared} bytes — over")
+                for chunk in resp.iter_bytes():
+                    buf += chunk
+                    if not magic_checked and len(buf) >= len(PDF_MAGIC):
+                        if not buf.startswith(PDF_MAGIC):
+                            raise InputError(
+                                f"downloaded content is not a PDF (no %PDF header): {pdf_url}"
+                            )
+                        magic_checked = True
+                    if len(buf) > MAX_DOWNLOAD_BYTES:
+                        raise _too_large_error(pdf_url, "exceeded")
     except httpx.HTTPError as e:
         raise InputError(f"failed to download {pdf_url}: {e}") from e
-    if resp.status_code != 200:
-        raise InputError(f"download of {pdf_url} returned HTTP {resp.status_code}")
-    data = resp.content
-    if not data.startswith(PDF_MAGIC):
+    if not buf.startswith(PDF_MAGIC):  # covers bodies shorter than the magic
         raise InputError(
             f"downloaded content is not a PDF (no %PDF header): {pdf_url}"
         )
-    return data
+    return bytes(buf)
 
 
 def resolve_url(url: str) -> ResolvedInput:

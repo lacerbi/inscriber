@@ -53,7 +53,7 @@ figure crops (see [Usage](#usage)).
 
 - Python 3.10+ on Windows, Linux, or macOS
 - [llama.cpp](https://github.com/ggml-org/llama.cpp) (the `llama-server` binary)
-- Two multimodal GGUF model pairs, ~8–11 GB total depending on quant
+- Two multimodal GGUF model pairs, ~9–12 GB total depending on quant
   (download links below)
 - A GPU helps a lot but is not required. Reference setup: a laptop RTX 4060
   with 8 GB VRAM.
@@ -83,8 +83,8 @@ steps 2–3 for you —
 inscriber setup --llama-bin-dir /path/to/llama.cpp/bin
 ```
 
-downloads the recommended models below (~11 GB; `--deepseek-quant q8_0` picks
-the smaller DeepSeek pair, ~8 GB) into the platform data dir, verifies each
+downloads the recommended models below (~12 GB; `--deepseek-quant q8_0` picks
+the smaller DeepSeek pair, ~9 GB) into the platform data dir, verifies each
 file against pinned checksums, and writes a ready-to-run config to the
 platform config dir. Interrupted downloads resume on re-run; already-complete
 files are verified and skipped. Prefer manual control? Steps 2–3 below do the
@@ -111,9 +111,11 @@ table restructuring:
 
 | model | role | download |
 | ----- | ---- | -------- |
-| **DeepSeek-OCR** BF16 *(recommended)* | OCR + figure grounding | [model (5.5 GB)](https://huggingface.co/sabafallah/DeepSeek-OCR-GGUF/resolve/main/deepseek-ocr-bf16.gguf?download=true) · [mmproj (0.8 GB)](https://huggingface.co/sabafallah/DeepSeek-OCR-GGUF/resolve/main/mmproj-deepseek-ocr-bf16.gguf?download=true) |
-| DeepSeek-OCR Q8_0 *(smaller, also verified)* | OCR + figure grounding | [model (2.9 GB)](https://huggingface.co/ggml-org/DeepSeek-OCR-GGUF/resolve/main/DeepSeek-OCR-Q8_0.gguf?download=true) · [mmproj (0.4 GB)](https://huggingface.co/ggml-org/DeepSeek-OCR-GGUF/resolve/main/mmproj-DeepSeek-OCR-Q8_0.gguf?download=true) |
-| **Gemma 4 E4B** QAT Q4_K_XL | figure description + tables | [model (3.9 GB)](https://huggingface.co/unsloth/gemma-4-E4B-it-qat-GGUF/resolve/main/gemma-4-E4B-it-qat-UD-Q4_K_XL.gguf?download=true) · [mmproj (0.9 GB)](https://huggingface.co/unsloth/gemma-4-E4B-it-qat-GGUF/resolve/main/mmproj-BF16.gguf?download=true) |
+| **DeepSeek-OCR** BF16 *(recommended)* | OCR + figure grounding | [model (5.9 GB)](https://huggingface.co/sabafallah/DeepSeek-OCR-GGUF/resolve/main/deepseek-ocr-bf16.gguf?download=true) · [mmproj (0.8 GB)](https://huggingface.co/sabafallah/DeepSeek-OCR-GGUF/resolve/main/mmproj-deepseek-ocr-bf16.gguf?download=true) |
+| DeepSeek-OCR Q8_0 *(smaller, also verified)* | OCR + figure grounding | [model (3.1 GB)](https://huggingface.co/ggml-org/DeepSeek-OCR-GGUF/resolve/main/DeepSeek-OCR-Q8_0.gguf?download=true) · [mmproj (0.4 GB)](https://huggingface.co/ggml-org/DeepSeek-OCR-GGUF/resolve/main/mmproj-DeepSeek-OCR-Q8_0.gguf?download=true) |
+| **Gemma 4 E4B** QAT Q4_K_XL | figure description + tables | [model (4.2 GB)](https://huggingface.co/unsloth/gemma-4-E4B-it-qat-GGUF/resolve/main/gemma-4-E4B-it-qat-UD-Q4_K_XL.gguf?download=true) · [mmproj (1.0 GB)](https://huggingface.co/unsloth/gemma-4-E4B-it-qat-GGUF/resolve/main/mmproj-BF16.gguf?download=true) |
+
+(Sizes are decimal GB, matching what `inscriber setup` prints while downloading.)
 
 > ⚠️ Keep DeepSeek-OCR at BF16 or Q8_0 — **Q4_K_M causes runaway repetition
 > loops**. The Gemma side has no such restriction: any reasonable quant works,

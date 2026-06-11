@@ -222,8 +222,15 @@ def validate_structural(cfg: RunConfig) -> None:
         errors.append(f"llama.port must be an integer (got {cfg.llama.port!r})")
     elif cfg.llama.port < 0 or cfg.llama.port > 65535:
         errors.append(f"llama.port {cfg.llama.port} out of range [0, 65535]")
-        # Concurrent mode runs two servers at once; a single fixed port can't host both.
-    if cfg.inference.mode == "concurrent" and _is_int(cfg.llama.port) and cfg.llama.port != 0:
+    # Concurrent mode runs two servers at once; a single fixed port can't host both.
+    # Gated on `run`: only `run` ever reads inference.mode — `ocr`/`describe` launch
+    # one server and must not be rejected by a config tuned for `run`.
+    if (
+        cfg.command == "run"
+        and cfg.inference.mode == "concurrent"
+        and _is_int(cfg.llama.port)
+        and cfg.llama.port != 0
+    ):
         errors.append(
             "concurrent mode requires an auto port (llama.port=0 / --port 0); a fixed "
             "port cannot host both the OCR and VLM servers simultaneously"

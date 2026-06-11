@@ -6,6 +6,7 @@ teardown issues surface before real-hardware work.
 
 from __future__ import annotations
 
+import signal
 from pathlib import Path
 
 import pytest
@@ -333,3 +334,47 @@ def test_mtmd_build_args():
     assert _subseq(args, ["-n", "2048"])
     assert _subseq(args, ["--chat-template", "deepseek-ocr"])  # mtmd path DOES pass it
     assert _subseq(args, ["-ngl", "10"])
+
+
+# --------------------------------------------------------------------------- #
+# Orphan backstop: SIGTERM/SIGHUP handlers (DESIGN §5.3)
+# --------------------------------------------------------------------------- #
+
+
+def _backstop_signals():
+    sigs = [signal.SIGTERM]
+    if hasattr(signal, "SIGHUP"):  # absent on Windows
+        sigs.append(signal.SIGHUP)
+    return sigs
+
+
+def test_register_cleanup_installs_signal_backstop(monkeypatch):
+    # POSIX SIGTERM/SIGHUP bypass atexit, so _register_cleanup must install
+    # handlers for them (when at the default disposition).
+    monkeypatch.setattr(server_mod, "_CLEANUP_REGISTERED", False)
+    saved = {sig: signal.getsignal(sig) for sig in _backstop_signals()}
+    try:
+        for sig in saved:
+            signal.signal(sig, signal.SIG_DFL)
+        server_mod._register_cleanup()
+        for sig in saved:
+            assert signal.getsignal(sig) is server_mod._on_terminate_signal
+    finally:
+        for sig, handler in saved.items():
+            signal.signal(sig, handler)
+
+
+def test_register_cleanup_leaves_foreign_handler(monkeypatch):
+    # A handler installed by an embedding application must not be stomped.
+    monkeypatch.setattr(server_mod, "_CLEANUP_REGISTERED", False)
+    saved = signal.getsignal(signal.SIGTERM)
+
+    def foreign(signum, frame):  # pragma: no cover - never invoked
+        pass
+
+    try:
+        signal.signal(signal.SIGTERM, foreign)
+        server_mod._register_cleanup()
+        assert signal.getsignal(signal.SIGTERM) is foreign
+    finally:
+        signal.signal(signal.SIGTERM, saved)

@@ -343,6 +343,17 @@ def test_concurrent_requires_auto_port():
     validate_structural(rc)
 
 
+def test_concurrent_port_check_gated_on_run():
+    # Only `run` ever launches two servers; a config carrying
+    # `mode = "concurrent"` + a fixed port must not break `ocr`/`describe`
+    # (which have no --mode flag to escape with).
+    for command in ("ocr", "describe"):
+        rc = RunConfig(command=command, input="p.pdf")
+        rc.inference.mode = "concurrent"
+        rc.llama.port = 9000
+        validate_structural(rc)  # must not raise
+
+
 # --------------------------------------------------------------------------- #
 # Config file loading
 # --------------------------------------------------------------------------- #

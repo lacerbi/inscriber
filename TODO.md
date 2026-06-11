@@ -6,6 +6,20 @@ empirical evidence records cited below live in `dev/notes/`.
 
 Legend: `[ ]` todo · `[!]` blocked.
 
+## Pre-release review follow-ups (2026-06-11)
+
+- [ ] **Work through the remaining pre-release review findings** — the
+      2026-06-11 full-codebase review's non-blocking items, written up as a
+      self-contained handoff list (each with location, rationale, suggested
+      fix, and pinned-behavior/cache-key caveats):
+      `dev/notes/2026-06-11-prerelease-review.md`. Highlights: Windows
+      file-in-use errors in `setup` (HIGH), empty server-log tail on fast
+      startup failures (HIGH), `dehyphenate` vs DESIGN §10.3b mismatch,
+      figure-cache key fragile to PNG-encoder churn, arXiv XML / `http://` /
+      host-matching input hardening, `tests/conftest.py` dedup. The blocking
+      items (SIGTERM orphan backstop, capped streaming download,
+      concurrent-port gate, README sizes) were fixed pre-release.
+
 ## Table-restructuring pass (DESIGN §9.7)
 
 - [ ] **Guard against silent SHAPE damage** in restructured tables — the

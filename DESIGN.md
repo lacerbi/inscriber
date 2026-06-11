@@ -12,7 +12,19 @@
 > `paper2llm`). It is written to be read entirely standalone — every concept,
 > dependency, and external quirk needed to build v1 is described here.
 >
-> **Last updated:** 2026-06-11 (§3.1/§13.2/§13.4: **`inscriber setup`
+> **Last updated:** 2026-06-11 (**pre-release review hardening** — three fixes
+> from the full-codebase review, whose remaining (non-blocking) findings are
+> handed off in `dev/notes/2026-06-11-prerelease-review.md`: §5.3 the orphan
+> backstop now also covers POSIX `SIGTERM`/`SIGHUP`, which bypass `atexit` —
+> `_register_cleanup` installs default-disposition handlers that terminate
+> tracked servers and re-deliver the signal; §6 the URL PDF download is now
+> **streamed with a hard 512 MiB cap** and an early `%PDF` magic check
+> (was: whole body buffered, magic checked after; new `tests/test_resolver.py`);
+> §5.4 the concurrent-mode fixed-port rejection is **gated to `run`** —
+> `ocr`/`describe` launch one server, ignore `inference.mode`, and have no
+> `--mode` escape hatch. Also: README model-size labels switched to decimal
+> GB, matching `inscriber setup`'s progress output. Earlier same day —
+> §3.1/§13.2/§13.4: **`inscriber setup`
 > subcommand** — model download + config bootstrap (`inscriber/setup.py`,
 > outside the pipeline: no RunConfig, no servers, no caches): fetches the
 > recommended GGUF pairs against a **pinned sha256/size registry** (the
@@ -603,7 +615,15 @@ Resolve with `pathlib`; never rely on `PATH` unless `llama_cpp_bin_dir` is unset
   clear error including the last lines of the server log.
 - **Teardown:** `proc.terminate()`, wait briefly, `proc.kill()` if needed.
   - Register an `atexit`/`finally` + signal handler so a Ctrl-C or crash never
-    leaves an orphaned server. Use a `contextmanager`:
+    leaves an orphaned server. `atexit` covers normal exit and Ctrl-C
+    (KeyboardInterrupt unwinds, then atexit runs) — but POSIX
+    `SIGTERM`/`SIGHUP` **bypass** `atexit`, so `_register_cleanup`
+    (`llama/server.py`) also installs default-disposition handlers for them
+    that terminate every tracked server and re-deliver the signal (standard
+    killed-by-signal exit status; `SIGHUP` is absent on Windows and skipped;
+    a handler installed by an embedding application is never stomped). A
+    `kill` / logout / supervisor stop therefore cannot orphan a GPU-resident
+    server. Use a `contextmanager`:
     ```python
     with server_manager.serve(ocr_model_spec) as endpoint:
         ... run OCR pass ...
@@ -626,7 +646,12 @@ Config `inference.mode`:
   Even in `concurrent` mode, **consult the OCR cache before launching the OCR
   server** (§8.6) — a fully-cached document needs no OCR server at all. There is
   no automatic "do both models fit?" detection in v1; it is the user's
-  responsibility, documented as a VRAM caveat.
+  responsibility, documented as a VRAM caveat. Structural validation rejects a
+  fixed `llama.port` together with `concurrent` (two servers cannot share one
+  port) — **gated to the `run` subcommand**: `ocr`/`describe` launch a single
+  server and ignore `inference.mode`, so a config carrying
+  `mode = "concurrent"` + a fixed port must not break them (they have no
+  `--mode` flag to escape with).
 
 ---
 
@@ -673,7 +698,12 @@ Input is one positional argument: a **local PDF path** or an **http(s) URL**.
     ```
     …but the **reusable asset is the 7 regex configs**, not hand-written classes.
   - Download with `httpx`, following redirects, with a timeout and a
-    descriptive User-Agent. Validate the downloaded bytes are a PDF.
+    descriptive User-Agent. The body is **streamed with a hard size cap**
+    (`MAX_DOWNLOAD_BYTES`, 512 MiB — the bytes are buffered in memory for
+    PyMuPDF, so an unbounded body on a hostile or misconfigured URL must not
+    be able to exhaust RAM; a `Content-Length` over the cap aborts before any
+    body is read) and the `%PDF` magic is validated on the **first bytes**,
+    so a non-PDF body aborts early instead of being fetched whole.
 - Output of this stage: a `ResolvedInput(pdf_bytes, source, original_url,
 suggested_name)`.
 
