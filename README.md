@@ -32,6 +32,16 @@ Given a PDF (local file, or a URL from a supported paper repository),
   clearly-marked, fully-local best-effort entry. `--bibtex-mode off` disables
   it; `--bibtex` forces the classic always-look-up mode.
 
+> **Accuracy.** The output is a best-effort machine transcription, not a
+> faithful copy. Body text and table values are generally reliable; residual
+> errors concentrate in complex table structure (multi-level headers) and in
+> dense math, where misreads stay plausible-looking (a hat accent read as a
+> dot, `mild` → `mid` in a subscript). An LLM consuming the Markdown tolerates
+> this noise well; for critical use, verify against the PDF — the
+> [`/inscribe` skill](#convert--verify-with-agent-skills) automates exactly
+> that. Every generated file ends with a short notice saying it was
+> machine-transcribed.
+
 Results are **cached** (content-addressed, per page / figure / table), so
 re-running with different output options takes seconds. Cache keys cover the
 model files, prompts, and the llama.cpp build, so swapping or upgrading any of
@@ -47,6 +57,14 @@ figure crops (see [Usage](#usage)).
   (download links below)
 - A GPU helps a lot but is not required. Reference setup: a laptop RTX 4060
   with 8 GB VRAM.
+
+> **Speed.** On the reference setup (laptop RTX 4060, 8 GB VRAM), OCR takes
+> ~20–25 seconds per page (a 39-page paper ≈ 15 minutes), and the VLM passes
+> then take ~20–40 seconds per table and per figure — so a long paper can run
+> 30–40 minutes end to end. Runtime has not been thoroughly optimized; the
+> Q8_0 DeepSeek-OCR quant might speed OCR up at the risk of some quality
+> loss, and `--ocr-resolution large` is a faster OCR setting for simple
+> documents (see [Options](#options)). Cached re-runs take seconds.
 
 ## Install
 
