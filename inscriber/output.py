@@ -23,14 +23,22 @@ class OutputError(InscriberError):
     """Raised on a clobber conflict or unwritable output."""
 
 
+# Windows reserved device names: a bare ``CON.md`` / ``CON.bib`` is unwritable
+# (the extension does not unreserve the stem).
+_WINDOWS_RESERVED_RE = re.compile(r"^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$", re.IGNORECASE)
+
+
 def sanitize_base_name(name: str) -> str:
     """Sanitize a base name for use in output filenames (DESIGN §14) —
-    dots/spaces/etc → ``_``. Every document output carries a ``_part`` suffix
-    (``_full``/``_main``/…), which is what keeps pathological source names
-    (e.g. a PDF literally named ``paper_main.pdf``) from colliding with
-    another document's outputs.
+    dots/spaces/etc → ``_``. The ``_part`` suffixes on document outputs
+    (``_full``/``_main``/…) keep pathological source names (e.g. a PDF literally
+    named ``paper_main.pdf``) from colliding with another document's outputs;
+    the unsuffixed outputs (``{base}.bib``, ``--no-full-suffix``'s ``{base}.md``)
+    additionally need the Windows reserved-stem guard.
     """
     cleaned = re.sub(r"[^\w\-]+", "_", name).strip("_")
+    if _WINDOWS_RESERVED_RE.match(cleaned):
+        cleaned += "_"  # CON → CON_ : keep the name recognizable, just writable
     return cleaned or "paper"
 
 
@@ -80,6 +88,13 @@ def write_full_document(
     ``{base}.md`` when ``full_suffix`` is off (library-style one-file naming).
     """
     out_dir = Path(out_dir)
+    if not full_suffix and re.search(r"_(?:full|main|appendix|backmatter)$", base_name):
+        # {base}.md is the one document output without a _part suffix, so a base
+        # that itself ends in one can collide with ANOTHER paper's split file.
+        logger.warning(
+            "--no-full-suffix with base name %r: %s.md could collide with another "
+            "document's output in the same directory", base_name, base_name,
+        )
     name = f"{base_name}_full.md" if full_suffix else f"{base_name}.md"
     return write_text_file(out_dir / name, markdown, clobber=clobber)
 

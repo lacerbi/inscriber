@@ -21,7 +21,12 @@ from __future__ import annotations
 from typing import Literal
 
 from inscriber.models import OcrPageResult, PageImage, ResolutionMode
-from inscriber.ocr.base import Inferencer, OcrBackend, inference_truncated
+from inscriber.ocr.base import (
+    OCR_MAX_TOKENS_CAP,
+    Inferencer,
+    OcrBackend,
+    inference_truncated,
+)
 
 GLM_PROMPT = "Text Recognition:"
 
@@ -37,7 +42,7 @@ class GlmOcrBackend(OcrBackend):
         *,
         figures_enabled: bool = False,  # accepted for registry parity; GLM can't ground
         seed: int = 0,
-        max_tokens: int = 8192,
+        max_tokens: int = OCR_MAX_TOKENS_CAP,
         request_timeout: float = 900.0,
     ) -> None:
         # figures_enabled is intentionally ignored: GLM-OCR has no grounding, so

@@ -127,3 +127,32 @@ def test_file_identity_uses_content_hash_and_mtime_cache(tmp_path):
     # second call hits the cache (disk map persisted):
     assert disk.exists()
     assert file_identity(str(f), hash_disk_cache=disk) == ident1
+
+
+def test_hash_sidecar_merges_and_replaces_atomically(tmp_path, monkeypatch):
+    # Review C1: the sidecar is written tmp+replace (like the cache entries) and
+    # merge-on-write — an entry a CONCURRENT process adds while we are hashing
+    # must survive our write (the pre-fix code wrote its stale initial read).
+    import inscriber.cache as cache_mod
+
+    disk = tmp_path / "hashes.json"
+    disk.write_text(json.dumps({"foreign|123|456": "deadbeef"}), encoding="utf-8")
+    f = tmp_path / "other-model.gguf"
+    f.write_bytes(b"some new gguf bytes")
+
+    real_sha256_file = cache_mod._sha256_file
+
+    def hashing_races_with_writer(path):
+        # Simulate another inscriber process updating the sidecar mid-hash.
+        current = json.loads(disk.read_text(encoding="utf-8"))
+        current["concurrent|7|8"] = "cafef00d"
+        disk.write_text(json.dumps(current), encoding="utf-8")
+        return real_sha256_file(path)
+
+    monkeypatch.setattr(cache_mod, "_sha256_file", hashing_races_with_writer)
+    file_identity(str(f), hash_disk_cache=disk)
+    data = json.loads(disk.read_text(encoding="utf-8"))
+    assert data["foreign|123|456"] == "deadbeef"  # pre-existing entry kept
+    assert data["concurrent|7|8"] == "cafef00d"  # mid-hash writer's entry kept
+    assert sha256_bytes(b"some new gguf bytes") in data.values()  # ours added
+    assert not disk.with_suffix(".json.tmp").exists()  # no tmp leftovers

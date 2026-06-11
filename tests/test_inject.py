@@ -43,6 +43,15 @@ def test_inject_describe_and_keep_adds_image_ref():
     assert "> **Image description.** A chart." in out
 
 
+def test_inject_describe_and_keep_escapes_brackets_in_alt():
+    # Review B4: a caption containing ] (or [) must not break the image link.
+    md = fig_placeholder("fig_p1_1")
+    out = inject_descriptions(md, descriptions={"fig_p1_1": "A chart."},
+                              figures={"fig_p1_1": _fig(caption="Figure [1]: x.")},
+                              mode="describe-and-keep")
+    assert "![Figure \\[1\\]: x.](figures/fig_p1_1.png)" in out
+
+
 def test_inject_placeholder_mode():
     md = fig_placeholder("fig_p1_1")
     out = inject_descriptions(md, descriptions={}, figures={"fig_p1_1": _fig()},

@@ -28,7 +28,16 @@ def setup_logging(verbose: int = 0, quiet: bool = False) -> logging.Logger:
     logger.setLevel(level)
     # Replace handlers so repeated setup (e.g. in tests) doesn't duplicate output.
     logger.handlers.clear()
-    handler = logging.StreamHandler(stream=sys.stderr)
+    stream = sys.stderr
+    # A cp1252 stderr (redirected/piped Windows console) raises UnicodeEncodeError
+    # inside the logging handler when a message interpolates a non-ASCII model
+    # path / URL / paper title — escape unencodable characters instead of losing
+    # the whole record. (argparse help text got the same treatment in cli.py.)
+    try:
+        stream.reconfigure(errors="backslashreplace")
+    except (AttributeError, OSError, ValueError):
+        pass  # not a reconfigurable text stream (test doubles, exotic redirects)
+    handler = logging.StreamHandler(stream=stream)
     handler.setLevel(level)
     handler.setFormatter(logging.Formatter("%(levelname)s %(message)s"))
     logger.addHandler(handler)

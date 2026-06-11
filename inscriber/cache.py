@@ -82,9 +82,19 @@ def file_identity(path: str, *, hash_disk_cache: Path | None = None) -> str:
     content_hash = _sha256_file(p)
     _HASH_MEM[mem_key] = content_hash
     if hash_disk_cache is not None:
-        disk_map[disk_key] = content_hash
         hash_disk_cache.parent.mkdir(parents=True, exist_ok=True)
-        hash_disk_cache.write_text(json.dumps(disk_map), encoding="utf-8")
+        # Merge-on-write (re-read first) so concurrent processes don't drop each
+        # other's entries, then tmp+replace like the cache entries themselves —
+        # a torn sidecar is only "self-healing" at the price of re-hashing
+        # multi-GB GGUFs.
+        try:
+            disk_map = json.loads(hash_disk_cache.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            pass  # keep the map loaded above
+        disk_map[disk_key] = content_hash
+        tmp = hash_disk_cache.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(disk_map), encoding="utf-8")
+        tmp.replace(hash_disk_cache)
     return f"{p.name}:{st.st_size}:{content_hash}"
 
 

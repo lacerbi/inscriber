@@ -239,10 +239,19 @@ def _terminate(proc: subprocess.Popen, grace: float = 10.0) -> None:
         try:
             proc.wait(timeout=grace)
         except subprocess.TimeoutExpired:
+            logger.warning(
+                "llama-server (pid %s) did not exit %.0fs after terminate; killing",
+                proc.pid, grace,
+            )
             proc.kill()
             proc.wait(timeout=grace)
     except Exception as e:  # pragma: no cover - defensive
-        logger.debug("error terminating server: %s", e)
+        # A wedged (GPU-resident, multi-GB) server we could not stop must not be
+        # forgotten silently — give the user the PID for a manual cleanup.
+        logger.warning(
+            "failed to terminate llama-server (pid %s): %s — if it is still "
+            "running, kill it manually", getattr(proc, "pid", "?"), e,
+        )
     finally:
         _untrack(proc)
 
@@ -258,13 +267,33 @@ def _untrack(proc: subprocess.Popen) -> None:
         _ACTIVE.discard(proc)
 
 
+# Settle delay before re-reading an empty server log (see _log_tail).
+_LOG_SETTLE_S = 0.5
+
+
 def _log_tail(log_path: Path, n: int = 40) -> str:
-    try:
-        text = log_path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
+    """Last ``n`` lines of the server log (the DESIGN §16 diagnosis aid).
+
+    When the server dies *during model load* (wrong mmproj pairing, VRAM OOM —
+    the most common first-run failures) its stdio buffers may not have reached
+    the file yet, so an empty first read is retried once after a short settle.
+    Callers put the log *path* in the error too, so the user can always read
+    the full file themselves.
+    """
+
+    def _read() -> str:
+        try:
+            return log_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return ""
+
+    text = _read()
+    if not text.strip():
+        time.sleep(_LOG_SETTLE_S)
+        text = _read()
+    if not text.strip():
         return "(no server log captured)"
-    lines = text.splitlines()
-    return "\n".join(lines[-n:])
+    return "\n".join(text.splitlines()[-n:])
 
 
 class LlamaServerManager:
@@ -352,7 +381,7 @@ class LlamaServerManager:
             if proc.poll() is not None:
                 raise ServerError(
                     f"llama-server exited early (code {proc.returncode}).\n"
-                    f"--- server log tail ---\n{_log_tail(log_path)}"
+                    f"--- server log tail ({log_path}) ---\n{_log_tail(log_path)}"
                 )
             try:
                 resp = httpx.get(health_url, timeout=2.0)
@@ -364,7 +393,7 @@ class LlamaServerManager:
             time.sleep(0.5)
         raise ServerError(
             f"timed out after {self.timeout:.0f}s waiting for {health_url}.\n"
-            f"--- server log tail ---\n{_log_tail(log_path)}"
+            f"--- server log tail ({log_path}) ---\n{_log_tail(log_path)}"
         )
 
 

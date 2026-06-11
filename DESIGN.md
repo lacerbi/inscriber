@@ -12,7 +12,23 @@
 > `paper2llm`). It is written to be read entirely standalone — every concept,
 > dependency, and external quirk needed to build v1 is described here.
 >
-> **Last updated:** 2026-06-11 (**pre-release review hardening** — three fixes
+> **Last updated:** 2026-06-11 (**review batch 1: robustness/UX + small
+> correctness** — the mechanical tier of the
+> `dev/notes/2026-06-11-prerelease-review.md` handoff list, statuses recorded
+> there: `setup` file-in-use errors now raise actionable `SetupError`s (A1);
+> the server-log tail is re-read after a settle and the error names the log
+> path (A2, §16); stderr logging escapes cp1252-unencodable characters (A3);
+> leftover workdirs and unkillable servers warn instead of staying silent
+> (A4/A5); the missing-raster bundle warning is gated on *refinable* blobs
+> (A6); the model-hash sidecar is written tmp+replace with merge-on-write
+> (C1); Windows reserved device stems are sanitized and the
+> `--no-full-suffix` cross-document collision is warned + the §14 claim
+> softened (B3); `describe-and-keep` alt text escapes brackets (B4, §10.2);
+> the OCR 8192 token cap is one shared constant (E2); the `image_first`
+> cache-key hazard is documented at the knob (C4). The `dehyphenate` finding
+> (B1) was **declined** — §10.3b now states the actual unconditional-join
+> behavior and drops the unimplemented merge clause. Earlier same day —
+> **pre-release review hardening** — three fixes
 > from the full-codebase review, whose remaining (non-blocking) findings are
 > handed off in `dev/notes/2026-06-11-prerelease-review.md`: §5.3 the orphan
 > backstop now also covers POSIX `SIGTERM`/`SIGHUP`, which bypass `atexit` —
@@ -1413,7 +1429,8 @@ Config `figure.mode` (mirrors paper2llm's `MarkdownOptions`):
   ```
 - **`describe-and-keep`** (paper2llm's `keepOriginalImages = true`; recommended
   for inscriber since we save crops to `figures/` anyway) — keep an image
-  reference **and** the description:
+  reference **and** the description (brackets in the caption are escaped so the
+  alt text cannot break the link):
 
   ```markdown
   ![{caption_or_label}](figures/{id}.png)
@@ -1456,9 +1473,13 @@ free from Mistral's whole-document OCR).
 - **Running headers/footers & page numbers:** detect short lines that recur at
   the same relative page position across many pages and strip them. Threshold-
   based; log what was removed.
-- **De-hyphenation across page/line breaks:** join `word-\nword` → `word`, and
-  merge sentences split by a page break when the next page starts mid-sentence
-  (lowercase continuation). Conservative rules only.
+- **De-hyphenation across page/line breaks:** join `word-\nword` → `word`. The
+  join is an unconditional `\w-\n\s*\w` (a *hard* compound hyphen that happens to
+  sit at a line break is also joined — accepted tradeoff, reviewed and declined
+  2026-06-11: soft-vs-hard hyphens are undecidable without a dictionary, and
+  DeepSeek emits paragraphs as long lines so the rule fires mostly at the page
+  boundaries it exists for; `--no-clean` opts out). A once-planned mid-sentence
+  page-break *merge* is not implemented.
 - **Known limitation:** tables and equations that span a page boundary may not
   reassemble cleanly. Documented, not fixed in v1.
 
@@ -2043,16 +2064,21 @@ OUT/
      `describe`, `manifest.source.name` (no PDF present, §8.5).
   Because BibTeX runs at describe time, the **`ocr` bundle** can only get an
   explicit `--name` or the source-derived name — never a citation key (§8.5).
-- Names are sanitized (`sanitize_base_name`: dots/spaces → `_`); the `_part`
-  suffix on every document output does the rest of the collision avoidance.
+- Names are sanitized (`sanitize_base_name`: dots/spaces → `_`; a Windows
+  reserved device stem — `CON`, `PRN`, `AUX`, `NUL`, `COM1`–`9`, `LPT1`–`9` —
+  gets a trailing `_` so the unsuffixed outputs `{base}.bib` / `{base}.md`
+  stay writable); the `_part` suffix on every document output does the rest
+  of the collision avoidance.
 - `{base}_full.md` is the **full** document (the enhanced, stitched markdown).
   After hand-editing the splits, `inscriber join OUT/{base}` regenerates it
   from them (in the §11 allparts form).
 - **`output.full_suffix = false`** (`--no-full-suffix`; also accepted by
   `join`) writes the full document as **`{base}.md`** instead — library-style
   one-file naming, natural with `--no-split` or a one-file-per-paper corpus.
-  Split files keep their `_part` suffixes either way (bare `{base}.md` cannot
-  collide with `{base}_main.md`). Deliberately an explicit knob, not an
+  Split files keep their `_part` suffixes either way (`{base}.md` cannot
+  collide with the *same* document's `{base}_main.md`; a base name that itself
+  ends in a part suffix could collide with *another* document's split in the
+  same directory — warned at write time). Deliberately an explicit knob, not an
   automatic when-not-splitting behavior — the output filename must not depend
   on an unrelated option.
 - **Two distinct `figures/` dirs:** the **bundle** always has one (crops are made
@@ -2122,7 +2148,10 @@ These are hard requirements, not nice-to-haves:
   machine-parseable even under `-q`.
 - **Server failures:** on a `/health` timeout or non-200 chat responses, include
   the tail of the captured server log in the error so the user can diagnose
-  (wrong model/mmproj pairing, OOM, bad flags).
+  (wrong model/mmproj pairing, OOM, bad flags). A server dying *during model
+  load* may not have flushed its stdio yet, so an empty tail is re-read once
+  after a short settle, and the error always names the log file's **path** —
+  the user can read the full log even when the tail came up empty.
 - **Logging:** standard `logging`; `-v` → DEBUG (includes raw model outputs when
   `--keep-intermediates`), default INFO, `-q` → WARNING.
 

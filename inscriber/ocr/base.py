@@ -32,6 +32,7 @@ __all__ = [
     "Inferencer",
     "HttpInferencer",
     "MtmdCliInferencer",
+    "OCR_MAX_TOKENS_CAP",
     "OcrBackend",
     "OcrPageResult",
     "Region",
@@ -39,6 +40,13 @@ __all__ = [
 ]
 
 logger = get_logger()
+
+# Hard OCR generation cap — an anti-repetition-loop guard, NOT a verbosity knob
+# (llama.cpp lacks DeepSeek-OCR's n-gram penalty, so a looping page must be
+# bounded; DESIGN §2.2). One constant for the base default and every backend's
+# ``__init__`` default: ``max_tokens`` is sampling cache-key material (§8.6), so
+# desynced literals would silently split the key from the served behavior.
+OCR_MAX_TOKENS_CAP = 8192
 
 
 @runtime_checkable
@@ -242,7 +250,7 @@ class OcrBackend(ABC):
 
     def max_tokens(self) -> int:
         """Hard generation cap (a real guard against repetition loops, DESIGN §2.2)."""
-        return 8192
+        return OCR_MAX_TOKENS_CAP
 
     def chat_template(self, path: Literal["server", "mtmd-cli"]) -> str | None:
         """Path-aware chat template (DESIGN §2.2): the value (or None) to use on

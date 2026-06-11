@@ -282,7 +282,17 @@ def download_model(
             f"sha256 (partial file deleted). If this recurs, upstream may have "
             f"re-uploaded the file — {MANUAL_DOWNLOAD_HINT}."
         )
-    part.replace(dest)
+    try:
+        part.replace(dest)
+    except OSError as e:
+        # Windows raises PermissionError/WinError 32 when the target is open in
+        # another process (a running llama-server with the GGUF mmap'd, etc.).
+        raise SetupError(
+            f"could not move {part.name} into place: {e} — {dest.name} may be "
+            f"open in another program (a running llama-server?); close it and "
+            f"re-run setup. The verified download is kept, so the retry is "
+            f"instant."
+        ) from e
     logger.info("  %s: done (%s)", file.local_name, _gb(file.size))
     return dest
 
@@ -344,6 +354,23 @@ def _emit_sections(data: dict, prefix: str = "") -> list[str]:
     return lines
 
 
+def _write_config_text(target: Path, content: str) -> None:
+    """Write the config, converting a file lock into an actionable SetupError.
+
+    On Windows, an editor (or another process) holding ``target`` open can make
+    the write raise PermissionError — surface a hint instead of a traceback.
+    """
+    try:
+        with open(target, "w", encoding="utf-8", newline="\n") as f:
+            f.write(content)
+    except OSError as e:
+        raise SetupError(
+            f"could not write config {target}: {e} — the file may be open in "
+            f"another program (an editor that locks it?); close it and re-run "
+            f"setup (the downloaded models are kept)."
+        ) from e
+
+
 _FRESH_TEMPLATE = """\
 # inscriber configuration — written by `inscriber setup`.
 # Only the keys setup manages are listed; everything else uses built-in
@@ -391,8 +418,7 @@ def write_setup_config(
             vlm_model=_toml_str(paths["vlm.model"]),
             vlm_mmproj=_toml_str(paths["vlm.mmproj"]),
         )
-        with open(target, "w", encoding="utf-8", newline="\n") as f:
-            f.write(content)
+        _write_config_text(target, content)
         logger.info("wrote config: %s", target)
         return target
 
@@ -416,8 +442,7 @@ def write_setup_config(
         "# (Comments from the previous file are not preserved.)\n"
     )
     body = "\n".join(_emit_sections(data))
-    with open(target, "w", encoding="utf-8", newline="\n") as f:
-        f.write(header + "\n" + body + "\n")
+    _write_config_text(target, header + "\n" + body + "\n")
     logger.info("updated config: %s (existing keys preserved; comments are not)", target)
     return target
 

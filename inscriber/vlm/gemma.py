@@ -44,6 +44,10 @@ class GemmaVlmBackend(VlmBackend):
         self.client = client
         self.seed = seed
         self.request_timeout = request_timeout
+        # ⚠️ image_first changes model output but is NOT VLM cache-key material —
+        # safe only while nothing configures it (it is always True). If this knob
+        # is ever exposed, fold it into the key payloads first
+        # (dev/notes/2026-06-11-prerelease-review.md, C4).
         self.image_first = image_first
 
     def sampling(self) -> dict:

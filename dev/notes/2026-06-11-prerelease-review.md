@@ -1,6 +1,13 @@
 # 2026-06-11 — Pre-release codebase review: remaining findings (handoff)
 
-**Status: open work list.** This note is the self-contained record of the
+**Status: partially resolved (2026-06-11, batch 1).** The mechanical tier —
+A1–A6, C1, B3, B4, E2, + the C4 comment — was fixed the same day, and **B1 was
+declined** (maintainer decision; DESIGN §10.3b amended to state the actual
+behavior instead). Per-item status lines below. **Still open: B2, B5
+(parity-bound, decision only), C2+C3 (one cache-orphaning change), D1–D3,
+E1, E3 (watch).**
+
+This note is the self-contained record of the
 findings from the 2026-06-11 full-codebase pre-release review that were **not**
 fixed before release. It is written so a developer with no prior context can
 pick up any item independently. Severities are from the review
@@ -47,6 +54,9 @@ Before touching anything here, read `AGENTS.md` ("Where truth lives",
   message.
 * **Test:** hard to simulate a lock portably; at minimum unit-test that an
   `OSError` from `Path.replace` is converted (monkeypatch `Path.replace`).
+* **Status:** ✅ fixed 2026-06-11 — promotion and both config writes raise
+  `SetupError` with a close-and-retry hint (`_write_config_text`); pinned in
+  `tests/test_setup.py` (monkeypatched lock; `.part` survival asserted).
 
 ### A2. [HIGH] Server-log tail can be empty exactly when the user needs it
 
@@ -62,6 +72,9 @@ Before touching anything here, read `AGENTS.md` ("Where truth lives",
   (e.g. re-read once after ~0.5 s if empty), and append the **path** of the
   persistent log file to the error message so the user can always look
   themselves.
+* **Status:** ✅ fixed 2026-06-11 — `_log_tail` retries an empty read once
+  after `_LOG_SETTLE_S` (0.5 s; tests patch it to 0), and both raise sites name
+  the log path; asserted in `tests/test_llama_server.py`. DESIGN §16 updated.
 
 ### A3. [MEDIUM] `UnicodeEncodeError` from log lines on a cp1252 stderr
 
@@ -76,6 +89,10 @@ Before touching anything here, read `AGENTS.md` ("Where truth lives",
   `errors="backslashreplace"` (or `io.TextIOWrapper(sys.stderr.buffer,
   encoding=..., errors="backslashreplace")`). One-liner; add a test that logs a
   `→` to a `StringIO` with a cp1252-like codec if practical.
+* **Status:** ✅ fixed 2026-06-11 — `setup_logging` calls
+  `stream.reconfigure(errors="backslashreplace")` (guarded for
+  non-reconfigurable test streams); new `tests/test_logging.py` logs a `→`
+  through a cp1252 `TextIOWrapper`.
 
 ### A4. [MEDIUM] Workdir cleanup failures are silent (`ignore_errors=True`)
 
@@ -87,6 +104,8 @@ Before touching anything here, read `AGENTS.md` ("Where truth lives",
   contradicting "deleted on success".
 * **Fix:** use `rmtree(..., onerror=...)` (or check `path.exists()` after) and
   log one WARNING with the leftover path.
+* **Status:** ✅ fixed 2026-06-11 — `path.exists()` check after the rmtree, one
+  WARNING with the leftover path (`pipeline._workdir`).
 
 ### A5. [LOW] `_terminate` failures only visible at DEBUG
 
@@ -98,6 +117,8 @@ Before touching anything here, read `AGENTS.md` ("Where truth lives",
   progress message).
 * **Fix:** log at WARNING when `kill()` is reached and when it fails, including
   the PID so the user can clean up manually.
+* **Status:** ✅ fixed 2026-06-11 — WARNING (with PID) on the kill escalation
+  and on a termination failure (`server._terminate`).
 
 ### A6. [LOW] Spurious "pre-table-pass bundle?" warning in `describe`
 
@@ -111,6 +132,9 @@ Before touching anything here, read `AGENTS.md` ("Where truth lives",
 * **Fix:** compute the refinable set first; warn only when it is non-empty.
   Pure reorder, no model contact; extend the existing old-bundle degradation
   test in `tests/test_tables.py`.
+* **Status:** ✅ fixed 2026-06-11 — refinable set computed before the raster
+  check (warning counts refinable blobs);
+  `test_no_raster_warning_gated_on_refinable_blobs`.
 
 ---
 
@@ -135,6 +159,13 @@ Before touching anything here, read `AGENTS.md` ("Where truth lives",
   out wholesale.
 * **Caveat:** changes output text → goldens in `tests/test_stitch.py` need
   updating; cheap to validate (no model involved).
+* **Status:** ❌ declined 2026-06-11 (maintainer decision — not worth it; note
+  the suggested lowercase-RHS restriction would not even fix the headline
+  `well-\nknown` case, since "known" is lowercase, and soft-vs-hard hyphens
+  are undecidable without a dictionary). Resolved via the doc half of the
+  option: DESIGN §10.3b now states the unconditional `\w-\n\w` behavior and
+  drops the unimplemented page-break merge clause. Code unchanged on purpose —
+  do not resurface without new evidence from real runs.
 
 ### B2. [LOW] `sanitize_table_output` discards valid GFM tables without leading pipes
 
@@ -160,6 +191,10 @@ Before touching anything here, read `AGENTS.md` ("Where truth lives",
   (`CON, PRN, AUX, NUL, COM1-9, LPT1-9`), and soften DESIGN §14's claim (or
   warn when a `--no-full-suffix` base ends in `_main`/`_appendix`/
   `_backmatter`/`_full`).
+* **Status:** ✅ fixed 2026-06-11 — reserved stems get a trailing `_`
+  (`CON` → `CON_`; also covers the always-bare `{base}.bib`), a
+  `--no-full-suffix` base ending in a part suffix warns at write time, and the
+  §14 claim is softened; `tests/test_output.py`.
 
 ### B4. [INFO] `describe-and-keep` alt text not escaped
 
@@ -168,6 +203,8 @@ Before touching anything here, read `AGENTS.md` ("Where truth lives",
 * **What:** a caption containing `]` or `)` breaks the Markdown image link.
   Cosmetic; non-default mode.
 * **Fix:** escape `]` in alt text (and spaces in path are already controlled).
+* **Status:** ✅ fixed 2026-06-11 — `[` and `]` escaped in alt text
+  (`postprocess/inject.py`); `tests/test_inject.py`.
 
 ### B5. [INFO — decision needed, parity-bound] Splitter single-search appendix miss
 
@@ -195,6 +232,8 @@ Before touching anything here, read `AGENTS.md` ("Where truth lives",
   is the price of a torn file.
 * **Fix:** same tmp+replace pattern; optionally merge-on-write (re-read before
   writing) so two processes don't drop each other's entries.
+* **Status:** ✅ fixed 2026-06-11 — tmp+`Path.replace` **and** merge-on-write
+  (`cache.file_identity`); `tests/test_cache.py`.
 
 ### C2. [MEDIUM] Figure-description cache key hashes re-encoded crop PNG bytes
 
@@ -230,6 +269,9 @@ Before touching anything here, read `AGENTS.md` ("Where truth lives",
 * **Fix:** either remove the knob or fold it into the key payloads when it
   becomes configurable. A comment at the knob pointing at this note is enough
   for now.
+* **Status:** ✅ done 2026-06-11 (the comment-only resolution) — warning
+  comment at the knob in `vlm/gemma.py` pointing here. The key-material work
+  only becomes due if the knob is ever exposed.
 
 ---
 
@@ -298,6 +340,9 @@ Before touching anything here, read `AGENTS.md` ("Where truth lives",
   `max_tokens`) from the base default.
 * **Fix:** one module constant, both readers. **Keep the value** — the cap is
   load-bearing (AGENTS.md invariants).
+* **Status:** ✅ fixed 2026-06-11 — `OCR_MAX_TOKENS_CAP = 8192` in
+  `ocr/base.py`; base default + DeepSeek + GLM all read it (value unchanged →
+  cache keys unchanged).
 
 ### E3. [INFO] Watch items (no action unless they bite)
 

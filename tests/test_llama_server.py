@@ -184,6 +184,7 @@ def test_serve_yields_url_and_tears_down(tmp_path, monkeypatch):
 
 def test_serve_raises_on_early_exit(tmp_path, monkeypatch):
     monkeypatch.setattr(server_mod, "find_binary", lambda *_: Path("/bin/llama-server"))
+    monkeypatch.setattr(server_mod, "_LOG_SETTLE_S", 0)  # no real wait in tests
 
     def factory(args, stdout=None, stderr=None):
         return FakePopen(args, stdout, stderr, alive_polls=0, exit_code=1)
@@ -192,15 +193,38 @@ def test_serve_raises_on_early_exit(tmp_path, monkeypatch):
     monkeypatch.setattr(server_mod.httpx, "get", lambda *a, **k: FakeResp(503))
 
     mgr = LlamaServerManager("/bin", server_start_timeout=2, log_dir=tmp_path, port_retries=1)
-    with pytest.raises(ServerError, match="exited early"):
+    with pytest.raises(ServerError) as ei:
         with mgr.serve(ServerSpec(model="/m.gguf")):
             pass
+    assert "exited early" in str(ei.value)
+    # The error names the log file itself (review A2): the tail can be empty when
+    # the dying server's stdio wasn't flushed yet, but the path always works.
+    assert str(tmp_path) in str(ei.value)
+
+
+def test_log_tail_settle_recovers_late_flush(tmp_path, monkeypatch):
+    # Review A2: a server dying during model load may not have flushed its stdio
+    # at the first read — the settle re-read must pick up the late content.
+    log = tmp_path / "server.log"
+    log.write_text("", encoding="utf-8")
+
+    def flush_during_settle(seconds):
+        log.write_text("load error: mmproj mismatch\n", encoding="utf-8")
+
+    monkeypatch.setattr(server_mod.time, "sleep", flush_during_settle)
+    assert server_mod._log_tail(log) == "load error: mmproj mismatch"
+
+
+def test_log_tail_empty_after_settle(tmp_path, monkeypatch):
+    monkeypatch.setattr(server_mod, "_LOG_SETTLE_S", 0)
+    assert server_mod._log_tail(tmp_path / "missing.log") == "(no server log captured)"
 
 
 def test_serve_times_out(tmp_path, monkeypatch):
     import httpx
 
     monkeypatch.setattr(server_mod, "find_binary", lambda *_: Path("/bin/llama-server"))
+    monkeypatch.setattr(server_mod, "_LOG_SETTLE_S", 0)  # no real wait in tests
     _patch_popen(monkeypatch, lambda *a, **k: FakePopen(a[0] if a else [], alive_polls=10_000))
 
     def raise_conn(*a, **k):

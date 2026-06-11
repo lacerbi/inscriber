@@ -81,7 +81,9 @@ def inject_descriptions(
         if mode == "describe-and-keep":
             fig = figures.get(fig_id)
             if fig is not None and fig.crop_path:
-                alt = fig.caption or fig_id
+                # Escape brackets so a caption containing ] (or [) cannot break
+                # the image link (crop_path itself is controlled, no escaping).
+                alt = (fig.caption or fig_id).replace("[", "\\[").replace("]", "\\]")
                 return f"![{alt}]({fig.crop_path})\n\n{block}\n"
         return f"{block}\n"
 

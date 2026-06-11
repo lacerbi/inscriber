@@ -276,6 +276,38 @@ def test_config_written_lf_utf8(tmp_path):
 
 
 # --------------------------------------------------------------------------- #
+# Windows file-in-use conversions (review A1): OSError → SetupError with a hint
+# --------------------------------------------------------------------------- #
+
+
+def test_promotion_oserror_converted_to_setup_error(tmp_path, monkeypatch):
+    # A locked destination (e.g. a running llama-server with the GGUF mmap'd)
+    # must surface a hint, and the verified .part must survive for the retry.
+    content = b"GGUF" + b"d" * 300
+    f = _fake_file(content)
+
+    def locked_replace(self, target):
+        raise PermissionError(32, "being used by another process")
+
+    monkeypatch.setattr(setup_mod.Path, "replace", locked_replace)
+    with pytest.raises(SetupError, match="open in another program"):
+        download_model(f, tmp_path, transport=_serving_transport(content))
+    assert (tmp_path / (f.local_name + ".part")).read_bytes() == content
+
+
+def test_config_write_oserror_converted_to_setup_error(tmp_path, monkeypatch):
+    # An editor holding config.toml locked must not yield a raw traceback.
+    target = tmp_path / "config.toml"
+
+    def locked_open(*args, **kwargs):
+        raise PermissionError(32, "being used by another process")
+
+    monkeypatch.setattr(setup_mod, "open", locked_open, raising=False)
+    with pytest.raises(SetupError, match="could not write config"):
+        write_setup_config(target, model_paths=_model_paths(tmp_path), llama_bin_dir=None)
+
+
+# --------------------------------------------------------------------------- #
 # run_setup orchestration + CLI wiring
 # --------------------------------------------------------------------------- #
 

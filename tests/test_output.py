@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 import pytest
 
 from inscriber.models import Figure
@@ -9,6 +11,7 @@ from inscriber.output import (
     OutputError,
     copy_figures,
     sanitize_base_name,
+    write_full_document,
     write_text_file,
 )
 
@@ -20,6 +23,32 @@ def test_sanitize_base_name_avoids_collision():
     assert sanitize_base_name("My Paper (v2)") == "My_Paper_v2"
     assert sanitize_base_name("") == "paper"
     assert sanitize_base_name("...") == "paper"
+
+
+def test_sanitize_base_name_windows_reserved_stems():
+    # Review B3: a bare CON.md / CON.bib is an unwritable device name on Windows
+    # (the extension does not unreserve the stem) — append "_" to stay writable.
+    assert sanitize_base_name("CON") == "CON_"
+    assert sanitize_base_name("con") == "con_"
+    assert sanitize_base_name("COM1") == "COM1_"
+    assert sanitize_base_name("lpt9") == "lpt9_"
+    assert sanitize_base_name("CONSOLE") == "CONSOLE"  # only exact stems
+    assert sanitize_base_name("COM10") == "COM10"  # COM1-9 / LPT1-9 only
+
+
+def test_no_full_suffix_part_suffix_base_warns(tmp_path, caplog):
+    # Review B3: with --no-full-suffix, a base that itself ends in a part suffix
+    # writes e.g. x_main.md — which can collide with ANOTHER paper's split file.
+    logging.getLogger("inscriber").propagate = True  # let caplog see records
+    with caplog.at_level(logging.WARNING, logger="inscriber"):
+        write_full_document(tmp_path, "x_main", "body", clobber=True, full_suffix=False)
+    assert "could collide" in caplog.text
+
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="inscriber"):
+        write_full_document(tmp_path, "x", "body", clobber=True, full_suffix=False)
+        write_full_document(tmp_path, "y_main_v2", "body", clobber=True, full_suffix=True)
+    assert "could collide" not in caplog.text  # innocuous names stay quiet
 
 
 def test_write_text_file_clobbers_by_default(tmp_path):

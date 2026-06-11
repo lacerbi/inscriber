@@ -35,7 +35,12 @@ from inscriber.models import (
     ResolutionMode,
     fig_placeholder,
 )
-from inscriber.ocr.base import Inferencer, OcrBackend, inference_truncated
+from inscriber.ocr.base import (
+    OCR_MAX_TOKENS_CAP,
+    Inferencer,
+    OcrBackend,
+    inference_truncated,
+)
 
 logger = get_logger()
 
@@ -105,7 +110,7 @@ class DeepSeekOcrBackend(OcrBackend):
         *,
         figures_enabled: bool = True,
         seed: int = 0,
-        max_tokens: int = 8192,
+        max_tokens: int = OCR_MAX_TOKENS_CAP,
         request_timeout: float = 900.0,
     ) -> None:
         self.figures_enabled = figures_enabled

@@ -892,6 +892,26 @@ def test_describe_old_bundle_without_raster_keeps_blob(
     assert calls.prompts == []
 
 
+def test_no_raster_warning_gated_on_refinable_blobs(caplog):
+    # Review A6: a page whose only <table> blobs are non-refinable (here: empty)
+    # and which has no raster must NOT warn — nothing refinable is lost. With no
+    # refinable work the session is never touched (session=None is safe).
+    cfg = RunConfig(command="describe", input="x")
+    logging.getLogger("inscriber").propagate = True  # let caplog see records
+    empty_pg = pipeline._Page(
+        page_number=1, markdown="prose\n\n<table></table>", page_text="prose"
+    )
+    with caplog.at_level(logging.WARNING, logger="inscriber"):
+        assert pipeline._refine_tables(cfg, [empty_pg], session=None) == 0
+    assert "no page raster" not in caplog.text
+
+    # ...while a refinable blob without a raster still warns (and keeps the blob).
+    refinable_pg = pipeline._Page(page_number=2, markdown=BLOB, page_text="")
+    with caplog.at_level(logging.WARNING, logger="inscriber"):
+        assert pipeline._refine_tables(cfg, [refinable_pg], session=None) == 0
+    assert "no page raster" in caplog.text
+
+
 def test_bundle_missing_referenced_raster_rejected(tmp_path):
     bundle_dir = tmp_path / "b.inscriber-ocr"
     bundle_dir.mkdir()

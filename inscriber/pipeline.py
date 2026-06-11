@@ -146,6 +146,11 @@ def _workdir(cfg: RunConfig):
             pass
         elif ok and not cfg.workdir.keep_intermediates:
             shutil.rmtree(path, ignore_errors=True)
+            if path.exists():
+                # Windows: a still-open handle (AV scan, slow log close) can leave
+                # residue — tell the user instead of silently accumulating GBs of
+                # page rasters in the OS temp dir across runs.
+                logger.warning("could not fully remove work dir: %s", path)
         elif not ok:
             logger.warning("keeping work dir for debugging: %s", path)
 
@@ -496,29 +501,30 @@ def _refine_tables(cfg: RunConfig, pages: list[_Page], session: _VlmSession) -> 
     work: list[tuple[_Page, str, int, list[tuple[int, int, int, str, Region | None]]]] = []
     for pg in pages:
         spans = find_table_blobs(pg.markdown)
-        if not spans:
-            continue
-        if pg.raster_png is None:
-            logger.warning(
-                "page %d has %d table(s) but no page raster (pre-table-pass bundle?); "
-                "keeping raw OCR tables",
-                pg.page_number, len(spans),
-            )
-            continue
         refinable = [
             (i, start, end, blob)
             for i, (start, end, blob) in enumerate(spans, 1)
             if blob_is_refinable(blob)
         ]
-        if refinable:
-            matches = match_table_regions([b for _, _, _, b in refinable], pg.regions)
-            entries = [
-                (i, start, end, blob, region)
-                for (i, start, end, blob), region in zip(refinable, matches, strict=True)
-            ]
-            # Context computed once per page against the pre-splice markdown (all
-            # blobs + placeholders stripped), exactly as in the validated prompt.
-            work.append((pg, table_page_context(pg.markdown), len(spans), entries))
+        if not refinable:
+            continue
+        # A missing raster only matters when something refinable would be lost —
+        # a page whose blobs are all non-refinable must not warn.
+        if pg.raster_png is None:
+            logger.warning(
+                "page %d has %d refinable table(s) but no page raster "
+                "(pre-table-pass bundle?); keeping raw OCR tables",
+                pg.page_number, len(refinable),
+            )
+            continue
+        matches = match_table_regions([b for _, _, _, b in refinable], pg.regions)
+        entries = [
+            (i, start, end, blob, region)
+            for (i, start, end, blob), region in zip(refinable, matches, strict=True)
+        ]
+        # Context computed once per page against the pre-splice markdown (all
+        # blobs + placeholders stripped), exactly as in the validated prompt.
+        work.append((pg, table_page_context(pg.markdown), len(spans), entries))
     if not work:
         return 0
     if not _vlm_configured(cfg):
@@ -1158,8 +1164,9 @@ def join_splits(cfg: RunConfig) -> list[str]:
     main_path = resolve_join_input(Path(cfg.input).expanduser())
     content = join_split_files(main_path)
     base = main_path.name[: -len("_main.md")]
-    name = f"{base}_full.md" if cfg.output.full_suffix else f"{base}.md"
-    out_path = write_text_file(
-        main_path.with_name(name), content, clobber=cfg.output.clobber
+    # write_full_document also carries the --no-full-suffix collision warning.
+    out_path = write_full_document(
+        main_path.parent, base, content,
+        clobber=cfg.output.clobber, full_suffix=cfg.output.full_suffix,
     )
     return [str(out_path)]
