@@ -72,6 +72,15 @@ def test_write_text_file_uses_lf_newlines(tmp_path):
     assert b"\r\n" not in p.read_bytes()
 
 
+def test_write_text_file_unwritable_raises_output_error(tmp_path):
+    # Review batch 5: a locked/unwritable target after a long run must surface
+    # as an actionable OutputError, not a raw OSError traceback.
+    target = tmp_path / "a.md"
+    target.mkdir()  # writing text over a directory path fails on every OS
+    with pytest.raises(OutputError, match="could not write"):
+        write_text_file(target, "x", clobber=True)
+
+
 def test_copy_figures(tmp_path):
     src = tmp_path / "bundle"
     (src / "figures").mkdir(parents=True)

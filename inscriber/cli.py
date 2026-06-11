@@ -199,6 +199,10 @@ def build_parser() -> argparse.ArgumentParser:
     # never get a citation-key name (DESIGN §14) — hence no --no-bibtex-name here.
     p_ocr.add_argument("--name", dest="name", default=None, metavar="NAME",
                        help="bundle base name (default: derived from the source)")
+    # A re-run overwrites the bundle — including hand-edited page markdown, an
+    # advertised workflow (DESIGN §8.5) — so ocr gets the clobber guard too.
+    p_ocr.add_argument("--no-clobber", dest="clobber", action="store_const", const=False,
+                       default=None, help="error instead of overwriting an existing bundle")
     _add_caching(p_ocr)
 
     # describe — OCR bundle → VLM + assemble + write

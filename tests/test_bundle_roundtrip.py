@@ -86,6 +86,47 @@ def test_ocr_then_describe_roundtrip(tmp_path, monkeypatch, hermetic_cache, fixt
     assert "## Abstract" in text  # OCR text carried through
 
 
+def test_ocr_no_clobber_protects_existing_bundle(
+    tmp_path, monkeypatch, hermetic_cache, fixture_pages_results
+):
+    # Review batch 5: a re-run overwrites the bundle — including hand-edited
+    # page markdown (an advertised workflow, DESIGN §8.5) — so `ocr` honors
+    # output.clobber and fails fast, before any model work.
+    from inscriber.output import OutputError
+
+    pages, results = fixture_pages_results
+    monkeypatch.setattr(pipeline, "run_ocr_pass", lambda cfg, resolved, work: (pages, results))
+    out = tmp_path / "out"
+    bundle_dir = Path(pipeline.run_ocr(_ocr_cfg(tmp_path, out))[0])
+    manifest = bundle_dir / "manifest.json"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace("## Abstract", "## Edited"),
+        encoding="utf-8",
+    )
+
+    cfg = _ocr_cfg(tmp_path, out)
+    cfg.output.clobber = False
+    with pytest.raises(OutputError, match="--no-clobber"):
+        pipeline.run_ocr(cfg)
+    assert "## Edited" in manifest.read_text(encoding="utf-8")  # hand-edit intact
+
+    # Default clobber=True still overwrites (behavior unchanged for re-runs).
+    pipeline.run_ocr(_ocr_cfg(tmp_path, out))
+    assert "## Edited" not in manifest.read_text(encoding="utf-8")
+
+
+def test_write_bundle_unwritable_manifest_raises_bundle_error(tmp_path):
+    # Review batch 5: an unwritable manifest after a full OCR pass must be an
+    # actionable BundleError, not a raw OSError traceback.
+    from inscriber.bundle import write_bundle
+
+    bdir = tmp_path / "b.inscriber-ocr"
+    (bdir / "manifest.json").mkdir(parents=True)  # a dir blocks the text write
+    with pytest.raises(BundleError, match="could not write bundle manifest"):
+        write_bundle(bdir, base_name="x", source={}, ocr_meta={},
+                     figure_detect="none", page_results=[], page_figures={})
+
+
 def test_hand_edited_page_survives(tmp_path, monkeypatch, hermetic_cache, fixture_pages_results):
     pages, results = fixture_pages_results
     out = tmp_path / "out"

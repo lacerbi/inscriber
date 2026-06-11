@@ -38,6 +38,9 @@ ctx_size = 16384
 mode = "sequential"
 
 [ocr]
+# deepseek-ocr is the supported backend; "glm-ocr" also exists as an
+# experimental text-only escape hatch (no figure grounding — pair it with
+# --no-figures; see DESIGN.md 22.1 for caveats).
 backend = "deepseek-ocr"
 
 # REQUIRED unless ocr.endpoint is set: DeepSeek-OCR model + multimodal projector

@@ -268,16 +268,20 @@ def validate_structural(cfg: RunConfig) -> None:
         errors.append(
             f"figure.context_chars must be >= 0 (got {cfg.figure.context_chars})"
         )
-    if not isinstance(cfg.table.refine, bool):
-        errors.append(f"table.refine must be a boolean (got {cfg.table.refine!r})")
-    if not isinstance(cfg.output.name_from_bibtex, bool):
-        errors.append(
-            f"output.name_from_bibtex must be a boolean (got {cfg.output.name_from_bibtex!r})"
-        )
-    if not isinstance(cfg.output.full_suffix, bool):
-        errors.append(
-            f"output.full_suffix must be a boolean (got {cfg.output.full_suffix!r})"
-        )
+    # Every boolean config field, generically (field default is bool ⇒ the
+    # field is boolean): TOML like ``offline = "false"`` is a truthy *string*
+    # that would silently flip behavior if accepted.
+    for section_name, section in (
+        ("table", cfg.table), ("output", cfg.output), ("cache", cfg.cache),
+        ("workdir", cfg.workdir), ("bibtex", cfg.bibtex), ("net", cfg.net),
+    ):
+        for fld in dataclasses.fields(section):
+            if isinstance(fld.default, bool):
+                val = getattr(section, fld.name)
+                if not isinstance(val, bool):
+                    errors.append(
+                        f"{section_name}.{fld.name} must be a boolean (got {val!r})"
+                    )
 
     if errors:
         raise ConfigError("Invalid configuration:\n  - " + "\n  - ".join(errors))

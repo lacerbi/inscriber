@@ -61,6 +61,7 @@ from inscriber.models import (
 from inscriber.ocr.base import HttpInferencer
 from inscriber.ocr.registry import get_ocr_backend
 from inscriber.output import (
+    OutputError,
     copy_figures,
     sanitize_base_name,
     write_full_document,
@@ -1009,6 +1010,10 @@ def run_ocr(cfg: RunConfig) -> list[str]:
     base = sanitize_base_name(cfg.name or resolved.suggested_name)
     out_dir = Path(cfg.output.dir)
     bdir = bundle_dir_for(out_dir, base)
+    # Fail fast (before any model work): a re-run would overwrite the bundle —
+    # including hand-edited page markdown, an advertised workflow (§8.5).
+    if not cfg.output.clobber and (bdir / "manifest.json").is_file():
+        raise OutputError(f"OCR bundle exists and --no-clobber set: {bdir}")
     figures_dir = bdir / "figures"
     backend = _build_ocr_backend(cfg)
 
@@ -1035,8 +1040,11 @@ def run_ocr(cfg: RunConfig) -> list[str]:
                 continue
             rel = f"pages/page_{pg.page_number:04d}.png"
             target = bdir / rel
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(pg.png_bytes)
+            try:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(pg.png_bytes)
+            except OSError as e:
+                raise OutputError(f"could not write bundle page raster {target}: {e}") from e
             page_rasters[pg.page_number] = rel
         # Every page's verbatim-raster hash rides the manifest: the figure
         # cache key is (raster, bbox, padding) (§9.6), and the bundle stores no

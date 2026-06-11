@@ -112,7 +112,10 @@ def write_bundle(
     Returns the bundle directory.
     """
     bundle_dir = Path(bundle_dir)
-    bundle_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        bundle_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        raise BundleError(f"could not create bundle directory {bundle_dir}: {e}") from e
 
     pages_json = []
     for res in page_results:
@@ -140,11 +143,18 @@ def write_bundle(
     }
     if figure_crop_padding is not None:
         manifest["figure_crop_padding"] = figure_crop_padding
-    (bundle_dir / "manifest.json").write_text(
-        json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-        newline="\n",
-    )
+    try:
+        (bundle_dir / "manifest.json").write_text(
+            json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+    except OSError as e:
+        # An unwritable manifest after a full OCR pass deserves an actionable
+        # error, not a traceback (the file may be open in an editor).
+        raise BundleError(
+            f"could not write bundle manifest {bundle_dir / 'manifest.json'}: {e}"
+        ) from e
     return bundle_dir
 
 

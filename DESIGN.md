@@ -12,7 +12,23 @@
 > `paper2llm`). It is written to be read entirely standalone — every concept,
 > dependency, and external quirk needed to build v1 is described here.
 >
-> **Last updated:** 2026-06-11 (**review batch 3: figure cache key** — C2+C3
+> **Last updated:** 2026-06-11 (**review batch 5: external (GPT) review
+> fixes** — §8.5/§13.2/§14 **`ocr` now honors `output.clobber`** and takes
+> `--no-clobber` (an existing bundle's manifest fails fast before any model
+> work — a careless re-run could silently destroy hand-edited bundle
+> markdown, an advertised workflow); §13.1 **every boolean config field is
+> now validated generically** (a TOML string like `offline = "false"` is
+> truthy and silently flipped behavior; previously only three booleans were
+> checked); final-artifact writes (`write_text_file`, figure copies, the
+> bundle manifest/rasters) now raise actionable `OutputError`/`BundleError`
+> instead of raw `OSError` tracebacks (the batch-1 A1 stance, extended from
+> `setup` to the pipeline outputs); §1.2/§2.4/§4/§8.1/§13/§22.1 the
+> **experimental `glm-ocr` registration is now documented** (maintainer
+> decision: keep it registered as a text-only escape hatch — no grounding,
+> not pinned on real output — rather than unregister; caveats in §22.1).
+> The review's remaining finding (command-scoped structural config
+> validation) is tracked in `TODO.md`. Earlier same day —
+> **review batch 3: figure cache key** — C2+C3
 > of the `dev/notes/2026-06-11-prerelease-review.md` handoff list, in one
 > change so warm figure entries are **orphaned exactly once**: §9.6 the
 > figure-description key now uses the crop's deterministic inputs —
@@ -211,12 +227,13 @@ For a given PDF, the output is:
 - Input is a **PDF file path or a URL**; output mirrors `paper2llm`.
 - A **config file** specifies the llama.cpp binary location and model paths;
   **every config value is overridable from the CLI.**
-- **Pluggable OCR backends** behind a stable interface. **v1 implements one:
+- **Pluggable OCR backends** behind a stable interface. **v1 supports one:
   DeepSeek-OCR** — the only currently-supported model that locates figures itself
   in llama.cpp, which the figure→description pipeline requires (§2.4). Other
   SOTA text-OCR models (GLM-OCR, PaddleOCR-VL, Dots.OCR, …) are **deferred**
-  pending a figure-detection solution (§22.1); the abstraction makes adding them
-  purely additive.
+  pending a figure-detection solution (§22.1 — which also documents the
+  experimental, text-only `glm-ocr` registration); the abstraction makes adding
+  them purely additive.
 - Pluggable **VLM backends** for figure description; first target is the
   **Gemma 4** family (Apache-2.0, multimodal, supported by llama.cpp).
 - **Two execution modes** (§3.1): **end-to-end by default** (one command), or a
@@ -437,19 +454,21 @@ that requires knowing where the figures are.
 | ---------------------------- | ------------ | ------------------ | ----------------------------------------------------------------------------------------------- | -------------------------------- | --- | --- | -------------------- | ----------------------- |
 | **DeepSeek-OCR**             | #17400       | ✅                 | ✅ inline `<                                                                                    | ref                              | >/< | det | >` boxes, 0–999 grid | **v1 (default & only)** |
 | **PaddleOCR-VL** (1.5, 0.9B) | #18825       | ✅ (markdown/JSON) | ⚠️ **not in llama.cpp** — layout/detection is a _separate Paddle model_ (PP-DocLayout)          | **deferred (§22.1)**             |
-| **GLM-OCR**                  | #19677       | ✅                 | ❌ **text-only by design** — doesn't predict coordinates; upstream pairs it with PP-DocLayoutV3 | **deferred (§22.1)**             |
+| **GLM-OCR**                  | #19677       | ✅                 | ❌ **text-only by design** — doesn't predict coordinates; upstream pairs it with PP-DocLayoutV3 | **experimental text-only** (registered; full support deferred, §22.1) |
 | Dots.OCR                     | #17575       | ✅                 | ✅ JSON layout _with_ boxes                                                                     | future grounding-capable backend |
 | HunyuanOCR                   | #21395       | ✅                 | (tbd)                                                                                           | future                           |
 
 **Bottom line: DeepSeek-OCR is the only currently-supported model that delivers
 the full figure→description pipeline standalone in llama.cpp**, so it is the sole
-implemented backend in v1. GLM-OCR and PaddleOCR-VL are excellent at the _text_
+*supported* backend in v1. GLM-OCR and PaddleOCR-VL are excellent at the _text_
 half (SOTA), but in llama.cpp they emit **no figure boxes** — their detection
 stage lives in an external PaddlePaddle model. They would only catch figures via
 a raster-image fallback that **misses the vector figures common in LaTeX papers**
 (matplotlib/TikZ → PDF). Rather than ship a half-working figure path for them,
-**they are deferred until figure detection is solved** — see §22.1, which keeps
-the capability comparison and lists candidate solutions. The `OcrBackend`
+**their full support is deferred until figure detection is solved** — see §22.1,
+which keeps the capability comparison and lists candidate solutions. (A
+**`glm-ocr` backend IS registered as an experimental, text-only escape hatch**
+— see §22.1 for its caveats.) The `OcrBackend`
 abstraction (§8) is built so adding them later is purely additive.
 
 ---
@@ -575,7 +594,8 @@ inscriber/
 │   │   ├── base.py             # OcrBackend ABC + shared dataclasses
 │   │   ├── registry.py         # name → backend class
 │   │   └── deepseek.py         # DeepSeekOcrBackend (grounding, §8.3)
-│   │   # paddleocr_vl.py / glm.py — deferred (§22.1)
+│   │   ├── glm.py              # GlmOcrBackend — experimental text-only (§22.1)
+│   │   # paddleocr_vl.py — deferred (§22.1)
 │   ├── vlm/
 │   │   ├── base.py             # VlmBackend ABC
 │   │   ├── registry.py
@@ -815,8 +835,9 @@ dir or `--workdir`); deleted on **success** unless `--keep-intermediates`, and
 
 Different OCR models emit different grounding/layout formats, need different
 prompts, and may even need a different _number of calls_. The pipeline must not
-know these details. So OCR is hidden behind an interface; **v1 implements one
-backend, `DeepSeekOcrBackend`** (§8.3), and the deferred text-OCR models (§22.1)
+know these details. So OCR is hidden behind an interface; **v1 supports one
+backend, `DeepSeekOcrBackend`** (§8.3; plus the experimental text-only
+`glm-ocr`, §22.1), and the deferred text-OCR models (§22.1)
 and future grounding models (Dots.OCR, …) are "write a new adapter + register
 it", with **zero pipeline changes**. For that promise to actually hold, three
 things below are non-obvious and deliberate: (a) the **backend owns the inference
@@ -1067,7 +1088,9 @@ Notes:
   objects, consults the cache, and skips bundle I/O entirely.
 - `manifest.json` is **human-editable**: fix an OCR glitch in a page's `markdown`
   (keeping the `⟦INSCRIBER_FIG⟧` placeholders) once, then run `describe` with N
-  different VLMs.
+  different VLMs. Because a re-run of `ocr` would overwrite those edits, `ocr`
+  honors `output.clobber` (`--no-clobber` → an existing bundle is a hard error,
+  checked before any model work; §14).
 - A page whose OCR generation was truncated (the repetition-loop signature,
   §2.2/§8.6) carries `"truncated": true` (additive — old readers ignore it,
   `bundle_schema` stays 1): it marks exactly the page whose `markdown` needs
@@ -1849,7 +1872,8 @@ ctx_size = 16384                       # -c; the single size knob (prompt +
 mode = "sequential"                    # "sequential" | "concurrent"
 
 [ocr]
-backend = "deepseek-ocr"               # v1: deepseek-ocr only (others §22.1)
+backend = "deepseek-ocr"               # deepseek-ocr (default, supported) |
+                                       #   glm-ocr (experimental text-only, §22.1)
 model = "/models/deepseek-ocr-f16.gguf"
 mmproj = "/models/mmproj-deepseek-ocr-f16.gguf"
 resolution = "gundam"                  # tiny | small | base | large | gundam;
@@ -1950,7 +1974,8 @@ inscriber setup   [setup-options]     # download recommended models + write a
       --mode {sequential,concurrent}   (run only; ocr/describe use one server)
 
   # --- OCR stage (run, ocr) ---
-      --ocr-backend NAME        v1: deepseek-ocr (others deferred, §22.1)
+      --ocr-backend NAME        deepseek-ocr (default) | glm-ocr (experimental
+                                text-only, §22.1; others deferred)
       --ocr-model PATH
       --ocr-mmproj PATH
       --ocr-resolution MODE     tiny|small|base|large|gundam
@@ -1982,6 +2007,8 @@ inscriber setup   [setup-options]     # download recommended models + write a
       --no-clean                skip header/footer + de-hyphenation cleanup
       --no-normalize-breaks     skip blank-line collapsing
       --no-clobber              error instead of overwriting existing outputs
+                                (also on ocr — an existing bundle, incl. any
+                                hand-edited markdown, is then a hard error)
       --no-notice               omit the OCR/VLM caveat footer
       --bibtex                  fetch BibTeX (alias for --bibtex-mode on; requires network)
       --bibtex-mode MODE        off | on | auto (default auto: citability → source chain, §12)
@@ -2036,7 +2063,7 @@ inscriber setup   [setup-options]     # download recommended models + write a
 | `output.page_numbers` / `output.page_separators`       | `--page-numbers` / `--page-separators`                                            |
 | `output.normalize_line_breaks`                         | `--no-normalize-breaks` (sets false)                                              |
 | `output.clean`                                         | `--no-clean` (sets false)                                                         |
-| `output.clobber`                                       | `--no-clobber` (sets false)                                                       |
+| `output.clobber`                                       | `--no-clobber` (sets false; run, ocr, describe, join)                             |
 | `output.notice`                                        | `--no-notice` (sets false)                                                        |
 | `cache.enabled` / `cache.refresh`                      | `--no-cache` / `--refresh`                                                        |
 | `workdir.path` / `workdir.keep_intermediates`          | `--workdir` / `--keep-intermediates`                                              |
@@ -2162,6 +2189,9 @@ OUT/
   inject `\r\n`).
 - Default overwrites existing outputs (`output.clobber = true`), logging each
   file written; `--no-clobber` makes a pre-existing target a hard error instead.
+  This includes the **`ocr` bundle**: with `--no-clobber`, an existing
+  `{base}.inscriber-ocr/manifest.json` fails fast (before any model work) —
+  protecting hand-edited bundle markdown (§8.5) from a careless re-run.
 
 ---
 
@@ -2396,6 +2426,17 @@ is built to accept them additively (`name`, `ocr_page`, `supports_grounding`,
 prompt/parse). They are **deferred from v1 for one specific reason**: in
 llama.cpp they emit **no figure bounding boxes**, and `inscriber`'s core job is
 turning figures into descriptions.
+
+> **Experimental `glm-ocr` registration (decision recorded 2026-06-11).** A
+> `GlmOcrBackend` (`ocr/glm.py`) ships **registered** as an experimental,
+> text-only escape hatch — reachable via `--ocr-backend glm-ocr`. Caveats: no
+> figure grounding (`supports_grounding = False` — pair it with `--no-figures`,
+> or accept the experimental `pdf-embedded` detector, §8.4); the table pass is
+> a natural no-op (GLM emits pipe tables, not `<table>` blobs); and unlike
+> DeepSeek its prompt/output behavior is **not pinned on real captured output**
+> (the §8.3 M1 discipline) — treat results accordingly. *Supported* status
+> still requires the figure-detection decision below plus a real-hardware
+> pinning pass.
 
 - **GLM-OCR** is text-only by design (it deliberately doesn't predict
   coordinate tokens; upstream pairs it with PP-DocLayoutV3).

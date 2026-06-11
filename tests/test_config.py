@@ -427,3 +427,35 @@ def test_invalid_toml_errors(tmp_path):
     p.write_text("this is = = not valid toml", encoding="utf-8")
     with pytest.raises(ConfigError):
         load_config_file(str(p))
+
+
+# --------------------------------------------------------------------------- #
+# Review batch 5: generic boolean validation + ocr --no-clobber
+# --------------------------------------------------------------------------- #
+
+
+def test_string_booleans_rejected():
+    # TOML like `offline = "false"` is a truthy STRING that would silently flip
+    # behavior — every boolean field is validated generically, not just the
+    # original three (table.refine / name_from_bibtex / full_suffix).
+    rc = cfg_from(["run", "in.pdf"], validate=False)
+    rc.net.offline = "false"
+    rc.output.split = "no"
+    rc.cache.enabled = 1  # an int is not a boolean either
+    rc.workdir.keep_intermediates = "true"
+    rc.bibtex.append_to_document = "yes"
+    with pytest.raises(ConfigError) as ei:
+        validate_structural(rc)
+    msg = str(ei.value)
+    for field in (
+        "net.offline", "output.split", "cache.enabled",
+        "workdir.keep_intermediates", "bibtex.append_to_document",
+    ):
+        assert f"{field} must be a boolean" in msg
+
+
+def test_ocr_accepts_no_clobber():
+    # `ocr` writes a bundle a re-run would overwrite (hand-edits included,
+    # DESIGN §8.5) — it takes --no-clobber like the other writing commands.
+    rc = cfg_from(["ocr", "in.pdf", "--no-clobber"])
+    assert rc.output.clobber is False

@@ -46,8 +46,16 @@ def write_text_file(path: Path, content: str, *, clobber: bool) -> Path:
     """Write UTF-8 text with ``\\n`` newlines, honoring the clobber policy."""
     if path.exists() and not clobber:
         raise OutputError(f"output exists and --no-clobber set: {path}")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8", newline="\n")
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8", newline="\n")
+    except OSError as e:
+        # A locked/unwritable target after a long run deserves an actionable
+        # error, not a traceback (same stance as setup's config write).
+        raise OutputError(
+            f"could not write {path}: {e} — the file may be open in another "
+            f"program, or the location unwritable"
+        ) from e
     logger.info("wrote %s", path)
     return path
 
@@ -75,8 +83,11 @@ def copy_figures(
             continue
         if dest.exists() and not clobber:
             raise OutputError(f"output figure exists and --no-clobber set: {dest}")
-        dest_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(src, dest)
+        try:
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(src, dest)
+        except OSError as e:
+            raise OutputError(f"could not copy figure to {dest}: {e}") from e
         written.append(dest)
     return written
 
