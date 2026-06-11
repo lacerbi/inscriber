@@ -162,17 +162,19 @@ fix is made once, not once per file. Note the regenerated `{base}_full.md` uses
 the combined ordering (appendix before backmatter, under `# Title - Appendix`-
 style headings), which may differ from the original document order.
 
-### Convert + verify with Claude Code
+### Convert + verify with agent skills
 
-The repo ships a [Claude Code](https://claude.com/claude-code) skill,
-[`/inscribe`](.claude/skills/inscribe/SKILL.md), available when running Claude
-Code inside this repository. Given a PDF path or URL (plus any options in
-plain words), it runs `inscriber`, then checks the transcription against the
-source PDF in ≤10-page chunks with parallel subagents briefed on the known
+The repo ships assistant skills for the convert-and-verify workflow:
+
+- [Claude Code](https://claude.com/claude-code): [`/inscribe`](.claude/skills/inscribe/SKILL.md)
+- Codex: [`$inscribe`](.agents/skills/inscribe/SKILL.md)
+
+When run inside this repository, the skill takes a PDF path or URL (plus any
+options in plain words), runs `inscriber`, then checks the transcription against
+the source PDF in ≤10-page chunks with parallel subagents briefed on the known
 failure modes (table cells, subscripts, equations, truncated pages, figure
 descriptions), applies the fixes that matter to the split files, and rejoins
-them with `inscriber join`. Say "no verification" to stop after the
-conversion.
+them with `inscriber join`. Say "no verification" to stop after the conversion.
 
 ## Options
 
